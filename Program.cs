@@ -67,7 +67,8 @@ namespace SDP2Jira
                 jira = Jira.CreateRestClient(ConfigurationManager.AppSettings["JIRA_SERVER"],
                                              ConfigurationManager.AppSettings["JIRA_LOGIN"],
                                              ConfigurationManager.AppSettings["JIRA_PASS"]);
-                Logger.Info($"Подключились к Jira: {ConfigurationManager.AppSettings["JIRA_SERVER"]}");
+                var project = jira.Projects.GetProjectAsync("ERP").Result;
+                Logger.Info($"Подключились к Jira: {ConfigurationManager.AppSettings["JIRA_SERVER"]} к проекту {project.Name}.");
             }
             catch (Exception ex)
             {
