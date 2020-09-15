@@ -113,7 +113,7 @@ namespace SDP2Jira
             File.WriteAllBytes("files\\" + filename, response);
         }
 
-        public static string CloseToJira(string request_id, out string status_code)
+        public static string CloseRequest(string request_id, out string status_code)
         {
             var client = new RestClient(@$"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests/{request_id}?format=json&input_data=
                                         {{
@@ -137,6 +137,11 @@ namespace SDP2Jira
                 return $"Заявка {request_id} успешно переведена в статус \"Передано в Jira\"";
             else
                 return $"Заяка {request_id} не закрыта. Причина:\n" + requestMessage.Response_status.Messages[0].Message;
+        }
+
+        public static string GetRequestUrl(string request_id)
+        {
+            return $"{ConfigurationManager.AppSettings["SDP_SERVER"]}/WorkOrder.do?woMode=viewWO&woID={request_id}";
         }
     }
 }

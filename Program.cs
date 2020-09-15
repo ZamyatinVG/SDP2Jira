@@ -15,7 +15,6 @@ namespace SDP2Jira
     {
         private static Jira jira;
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-        
         private static string HtmlToPlainText(string html)
         {
             //https://stackoverflow.com/questions/286813/how-do-you-convert-html-to-plain-text
@@ -72,7 +71,7 @@ namespace SDP2Jira
             }
             catch (Exception ex)
             {
-                Logger.Error("Ошибка подключения к Jira!\n" + ex.Message);
+                Logger.Error("Ошибка подключения к Jira!\r\n" + ex.Message);
                 return;
             }
             List<string> supportList;
@@ -84,7 +83,7 @@ namespace SDP2Jira
             }
             catch (Exception ex)
             {
-                Logger.Error("Ошибка загрузки списка специалистов!\n" + ex.Message);
+                Logger.Error("Ошибка загрузки списка специалистов!\r\n" + ex.Message);
                 return;
             }
             foreach (string supportName in supportList)
@@ -96,7 +95,7 @@ namespace SDP2Jira
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"Ошибка получения списка заявок из SDP по специалисту {supportName}!\n" + ex.Message);
+                    Logger.Error($"Ошибка получения списка заявок из SDP по специалисту {supportName}!\r\n" + ex.Message);
                 }
                 foreach (var req in SDP.requestList.requests)
                 {
@@ -104,12 +103,12 @@ namespace SDP2Jira
                     try
                     {
                         request = SDP.GetRequest(req.Id);
-                        //Logger.Info("Получены данные по заявке:\n" + JsonConvert.SerializeObject(request, Formatting.Indented));
+                        //Logger.Info("Получены данные по заявке:\r\n" + JsonConvert.SerializeObject(request, Formatting.Indented));
                         Logger.Info($"Получены данные по заявке {request.Id}.");
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"Ошибка получения заявки {req.Id} из SDP!\n" + ex.Message);
+                        Logger.Error($"Ошибка получения заявки {req.Id} из SDP!\r\n" + ex.Message);
                     }
                     if (IsLoginExists(request.Requester.Email_id, out string login))
                     {
@@ -130,83 +129,81 @@ namespace SDP2Jira
                         Logger.Error("Не удалось определить логин специалиста!");
                         continue;
                     }
-                    //if (request.Id == "278617")
+
+                    if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Count() > 0)
+                        Logger.Info($"В Jira уже есть задача {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} по заявке {request.Id}!");
+                    else
                     {
-                        if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Count() > 0)
-                            Logger.Info($"В Jira уже есть задача {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} по заявке {request.Id}!");
-                        else
+                        //парсим визуальные вложения в описании заявки
+                        string description = request.Description;
+                        while (description.Length > 0)
                         {
-                            //парсим визуальные вложения в описании заявки
-                            string description = request.Description;
-                            while (description.Length > 0)
-                            {
-                                int index = description.IndexOf("src=\"");
-                                if (index < 0)
-                                    description = "";
-                                else
-                                {
-                                    SDP.Request.Attachment attachment = new SDP.Request.Attachment();
-                                    description = description.Substring(index + 5);
-                                    index = description.IndexOf("\"");
-                                    attachment.Content_url = description.Substring(0, index);
-                                    index = attachment.Content_url.LastIndexOf("/");
-                                    attachment.File_name = attachment.Content_url.Substring(index + 1);
-                                    request.Attachments.Add(attachment);
-                                    Logger.Info($"Найдено вложение в описании: Content_url = {attachment.Content_url}, File_name = {attachment.File_name}");
-                                }
-                            }
-                            var issue = jira.CreateIssue("ERP");
-                            issue.Reporter = request.AuthorLogin;
-                            issue.Assignee = request.SpecialistLogin;
-                            issue.Description = HtmlToPlainText(request.Description);
-                            issue["Номер заявки SD"] = request.Id;
-                            issue.Type = "10301"; //Task
-                            issue.Summary = $"{request.Id} {request.Subject}";
-                            issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                            issue["Категория"] = request.Subcategory == null ? "" : request.Subcategory.Name;
-                            try
-                            {
-                                issue.SaveChanges();
-                                Logger.Info($"Задача {issue.Key} создана по заявке {request.Id}.");
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Error($"Ошибка создания задачи в Jira по заявке {request.Id}!\n" + ex.Message);
-                                continue;
-                            }
-                            if (request.Attachments.Count > 0)
-                            {
-                                Logger.Info($"Начата загрузка вложений по заявке {request.Id}.");
-                                foreach (var attachment in request.Attachments)
-                                {
-                                    try
-                                    {
-                                        SDP.DowloadFile(attachment.Content_url, attachment.File_name);
-                                        Logger.Info($"Загружен файл {attachment.File_name}.");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Logger.Error($"Ошибка загрузки файла {attachment.File_name}!\n" + ex.Message);
-                                        continue;
-                                    }
-                                    try
-                                    {
-                                        AddAttachmentsAsync(issue, attachment.File_name);
-                                        Logger.Info($"К задаче {issue.Key} добавлен файл {attachment.File_name}.");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Logger.Error($"Ошибка добавления файла {attachment.File_name} к задача {issue.Key}!\n" + ex.Message);
-                                    }
-                                    File.Delete("files\\" + attachment.File_name);
-                                }
-                            }
-                            string result = SDP.CloseToJira(request.Id, out string status_code);
-                            if (status_code == "2000")
-                                Logger.Info(result);
+                            int index = description.IndexOf("src=\"");
+                            if (index < 0)
+                                description = "";
                             else
-                                Logger.Error(result);
+                            {
+                                SDP.Request.Attachment attachment = new SDP.Request.Attachment();
+                                description = description.Substring(index + 5);
+                                index = description.IndexOf("\"");
+                                attachment.Content_url = description.Substring(0, index);
+                                index = attachment.Content_url.LastIndexOf("/");
+                                attachment.File_name = attachment.Content_url.Substring(index + 1);
+                                request.Attachments.Add(attachment);
+                                Logger.Info($"Найдено вложение в описании: Content_url = {attachment.Content_url}, File_name = {attachment.File_name}");
+                            }
                         }
+                        var issue = jira.CreateIssue("ERP");
+                        issue.Reporter = request.AuthorLogin;
+                        issue.Assignee = request.SpecialistLogin;
+                        issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description);
+                        issue["Номер заявки SD"] = request.Id;
+                        issue.Type = "10301"; //Task
+                        issue.Summary = $"{request.Id} {request.Subject}";
+                        issue["Направление"] = request.Udf_fields.Udf_pick_3901;
+                        issue["Категория"] = request.Subcategory == null ? "" : request.Subcategory.Name;
+                        try
+                        {
+                            issue.SaveChanges();
+                            Logger.Info($"Задача {issue.Key} создана по заявке {request.Id}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error($"Ошибка создания задачи в Jira по заявке {request.Id}!\r\n" + ex.Message);
+                            continue;
+                        }
+                        if (request.Attachments.Count > 0)
+                        {
+                            Logger.Info($"Начата загрузка вложений по заявке {request.Id}.");
+                            foreach (var attachment in request.Attachments)
+                            {
+                                try
+                                {
+                                    SDP.DowloadFile(attachment.Content_url, attachment.File_name);
+                                    Logger.Info($"Загружен файл {attachment.File_name}.");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error($"Ошибка загрузки файла {attachment.File_name}!\r\n" + ex.Message);
+                                    continue;
+                                }
+                                try
+                                {
+                                    AddAttachmentsAsync(issue, attachment.File_name);
+                                    Logger.Info($"К задаче {issue.Key} добавлен файл {attachment.File_name}.");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error($"Ошибка добавления файла {attachment.File_name} к задача {issue.Key}!\r\n" + ex.Message);
+                                }
+                                File.Delete("files\\" + attachment.File_name);
+                            }
+                        }
+                        string result = SDP.CloseRequest(request.Id, out string status_code);
+                        if (status_code == "2000")
+                            Logger.Info(result);
+                        else
+                            Logger.Error(result);
                     }
                 }
             }
