@@ -13,7 +13,8 @@ namespace SDP2Jira
     class Program
     {
         private static Jira jira;
-        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        private static readonly GalaxyLogger Logger = new GalaxyLogger();
+
         private static List<string> supportList;
         private static string HtmlToPlainText(string html)
         {
@@ -147,7 +148,7 @@ namespace SDP2Jira
                     else
                     {
                         //парсим визуальные вложения в описании заявки
-                        string description = request.Description;
+                        string description = request.Description ?? "";
                         while (description.Length > 0)
                         {
                             int index = description.IndexOf("src=\"");
@@ -168,7 +169,7 @@ namespace SDP2Jira
                         var issue = jira.CreateIssue("ERP");
                         issue.Reporter = request.AuthorLogin;
                         issue.Assignee = request.SpecialistLogin;
-                        issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description);
+                        issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
                         issue["Номер заявки SD"] = request.Id;
                         issue.Type = "10301"; //Task
                         issue.Summary = $"{request.Id} {request.Subject}";
