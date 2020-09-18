@@ -3,15 +3,16 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <Version>0.9.4</Version>
+    <Version>0.9.5</Version>
     <Authors>ZamyatinVG</Authors>
     <Company />
   </PropertyGroup>
-
+  
   <ItemGroup>
     <None Remove=".gitattributes" />
     <None Remove=".gitignore" />
     <None Remove="CHANGELOG.md" />
+    <None Remove="JIRA.pck" />
     <None Remove="README.md" />
   </ItemGroup>
 
@@ -19,6 +20,7 @@
     <PackageReference Include="Atlassian.SDK" Version="12.1.1" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.24" />
     <PackageReference Include="NLog" Version="4.7.4" />
+    <PackageReference Include="Oracle.EntityFrameworkCore" Version="3.19.80" />
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="4.7.0" />
     <PackageReference Include="System.DirectoryServices" Version="4.7.0" />
   </ItemGroup>

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using Atlassian.Jira;
 using NLog;
-using Newtonsoft.Json;
 
 namespace SDP2Jira
 {
@@ -15,6 +14,7 @@ namespace SDP2Jira
     {
         private static Jira jira;
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        private static List<string> supportList;
         private static string HtmlToPlainText(string html)
         {
             //https://stackoverflow.com/questions/286813/how-do-you-convert-html-to-plain-text
@@ -35,12 +35,12 @@ namespace SDP2Jira
             text = stripFormattingRegex.Replace(text, string.Empty);
             return text;
         }
-        private static bool IsLoginExists(string mail, out string login)
+        private static bool IsLoginExists(string mail, string displayname, out string login)
         {
             login = "";
             DirectorySearcher ds = new DirectorySearcher()
             {
-                Filter = $"(mail={mail})",
+                Filter = mail == null ? $"(displayname={displayname})" : $"(mail={mail})",
                 PropertiesToLoad = { "samaccountname" }
             };
             SearchResult sr = ds.FindOne();
@@ -52,13 +52,13 @@ namespace SDP2Jira
                 return true;
             }
         }
-        public static async void AddAttachmentsAsync(Issue issue, string path)
+        private static async void AddAttachmentsAsync(Issue issue, string path)
         {
             byte[] data = File.ReadAllBytes("files\\" + path);
             UploadAttachmentInfo info = new UploadAttachmentInfo(path, data);
             await issue.AddAttachmentAsync(new UploadAttachmentInfo [] { info });
         }
-        static void Main()
+        private static void Main(string[] args)
         {
             Logger.Info("Запуск программы.");
             try
@@ -74,7 +74,16 @@ namespace SDP2Jira
                 Logger.Error("Ошибка подключения к Jira!\r\n" + ex.Message);
                 return;
             }
-            List<string> supportList;
+            GetSupportList();
+            if (args.Length == 0)
+                SyncRequests();
+            else
+                if (args[0] == "-stats")
+                    GetStats();
+            Logger.Info("Завершение работы программы.");
+        }
+        private static void GetSupportList()
+        {
             try
             {
                 string[] supportListArray = ConfigurationManager.AppSettings["SUPPORT_LIST"].Split(';');
@@ -86,6 +95,9 @@ namespace SDP2Jira
                 Logger.Error("Ошибка загрузки списка специалистов!\r\n" + ex.Message);
                 return;
             }
+        }
+        private static void SyncRequests()
+        {           
             foreach (string supportName in supportList)
             {
                 try
@@ -110,7 +122,7 @@ namespace SDP2Jira
                     {
                         Logger.Error($"Ошибка получения заявки {req.Id} из SDP!\r\n" + ex.Message);
                     }
-                    if (IsLoginExists(request.Requester.Email_id, out string login))
+                    if (IsLoginExists(request.Requester.Email_id, null, out string login))
                     {
                         Logger.Info($"Автор: {login}");
                         request.AuthorLogin = login;
@@ -120,7 +132,7 @@ namespace SDP2Jira
                         Logger.Error("Не удалось определить логин автора!");
                         continue;
                     }
-                    if (IsLoginExists(request.Technician.Email_id, out login))
+                    if (IsLoginExists(request.Technician.Email_id, null, out login))
                     {
                         request.SpecialistLogin = login;
                     }
@@ -207,7 +219,62 @@ namespace SDP2Jira
                     }
                 }
             }
-            Logger.Info("Завершение работы программы.");
+        }
+        private static void GetStats()
+        {
+            foreach (string supportName in supportList)
+            {
+                if (IsLoginExists(null, supportName, out string login))
+                {
+                    jira.Issues.MaxIssuesPerRequest = 1000;
+                    var issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    using (GalaxyDB galaxyDB = new GalaxyDB())
+                    {
+                        foreach (Issue issue in issues)
+                        {
+                            JIRA_ISSUE jira_Issue = galaxyDB.JIRA_ISSUE.Where(x => x.JIRAIDENTIFIER == issue.JiraIdentifier).FirstOrDefault();
+                            if (jira_Issue == null)
+                            {
+                                jira_Issue = new JIRA_ISSUE();
+                                jira_Issue.JIRAIDENTIFIER = issue.JiraIdentifier;
+                                galaxyDB.JIRA_ISSUE.Add(jira_Issue);
+                            }
+                            jira_Issue.KEY = issue.Key.Value;
+                            jira_Issue.PRIORITY = issue.Priority.Name;
+                            jira_Issue.CREATED = issue.Created;
+                            jira_Issue.REPORTERUSER = issue.ReporterUser.DisplayName;
+                            jira_Issue.ASSIGNEEUSER = issue.AssigneeUser.DisplayName;
+                            jira_Issue.SUMMARY = issue.Summary;
+                            jira_Issue.STATUSNAME = issue.Status.Name;
+                            jira_Issue.RATE = issue["Оценка"] == null ? 0 : Convert.ToInt32(issue["Оценка"].Value);
+                            jira_Issue.CATEGORY = issue["Категория"] == null ? null : issue["Категория"].Value.ToString();
+                            jira_Issue.DIRECTION = issue["Направление"] == null ? null : issue["Направление"].Value.ToString();
+
+
+                            var changeLog = issue.GetChangeLogsAsync().Result;
+                            foreach (var history in changeLog)
+                                foreach (var item in history.Items)
+                                    if (item.FieldName == "status")
+                                    {
+                                        JIRA_ISSUE_HISTORY jira_Issue_History = galaxyDB.JIRA_ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                        if (jira_Issue_History == null)
+                                        {
+                                            jira_Issue_History = new JIRA_ISSUE_HISTORY();
+                                            jira_Issue_History.ID = history.Id;
+                                            galaxyDB.JIRA_ISSUE_HISTORY.Add(jira_Issue_History);
+                                        }
+                                        jira_Issue_History.JIRAIDENTIFIER = issue.JiraIdentifier;
+                                        jira_Issue_History.CREATEDDATE = history.CreatedDate;
+                                        jira_Issue_History.FIELDNAME = item.FieldName;
+                                        jira_Issue_History.FROMVALUE = item.FromValue;
+                                        jira_Issue_History.TOVALUE = item.ToValue;
+                                    }
+                        }
+                        galaxyDB.SaveChanges();
+                    }
+                    Logger.Info($"Загружено {issues.Count} задач по специалисту {supportName}.");
+                }
+            }
         }
     }
 }
