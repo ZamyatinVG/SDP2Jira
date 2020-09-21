@@ -136,7 +136,7 @@ namespace SDP2Jira
             if (status_code == "2000")
                 return $"Заявка {request_id} успешно переведена в статус \"Передано в Jira\"";
             else
-                return $"Заяка {request_id} не закрыта. Причина:\n" + requestMessage.Response_status.Messages[0].Message;
+                return $"Заявка {request_id} не закрыта. Причина:\n" + requestMessage.Response_status.Messages[0].Message;
         }
 
         public static string GetRequestUrl(string request_id)

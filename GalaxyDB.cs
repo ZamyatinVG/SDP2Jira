@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System;
 using System.Net;
+using System.Reflection;
 using NLog;
 
 namespace SDP2Jira
@@ -86,6 +87,8 @@ namespace SDP2Jira
         public string HOSTIP { get; set; }
         [StringLength(4000)]
         public string MESSAGE { get; set; }
+        [StringLength(20)]
+        public string VERSION { get; set; }
     }
 
     public class GalaxyLogger
@@ -108,8 +111,9 @@ namespace SDP2Jira
                     USERNAME = Environment.UserName,
                     HOSTNAME = hostName,
                     HOSTIP = hostIP,
-                    MESSAGE = message.Length > 4000 ? message.Substring(0, 4000) : message
-                };
+                    MESSAGE = message.Length > 4000 ? message.Substring(0, 4000) : message,
+                    VERSION = Assembly.GetExecutingAssembly().GetName().Version.ToString()
+            };
                 galaxyDB.JIRA_LOG.Add(jira_log);
                 galaxyDB.SaveChanges();
             }

@@ -6,7 +6,6 @@ using System.Configuration;
 using System.Collections.Generic;
 using System.IO;
 using Atlassian.Jira;
-using NLog;
 
 namespace SDP2Jira
 {
