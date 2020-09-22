@@ -9,29 +9,28 @@ using NLog;
 
 namespace SDP2Jira
 {
-    public partial class GalaxyDB : DbContext
+    public partial class BIDbContext : DbContext
     {
-        public virtual DbSet<JIRA_ISSUE> JIRA_ISSUE { get; set; }
-        public virtual DbSet<JIRA_ISSUE_HISTORY> JIRA_ISSUE_HISTORY { get; set; }
-        public virtual DbSet<JIRA_LOG> JIRA_LOG { get; set; }
+        public virtual DbSet<ISSUE> ISSUE { get; set; }
+        public virtual DbSet<ISSUE_HISTORY> ISSUE_HISTORY { get; set; }
+        public virtual DbSet<LOG> LOG { get; set; }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseOracle(ConfigurationManager.ConnectionStrings["GalaxyDB"].ToString(), x => x.UseOracleSQLCompatibility("11"));
+            optionsBuilder.UseSqlServer(ConfigurationManager.ConnectionStrings["BIDB"].ToString());
         }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.HasDefaultSchema("GAL_ASUP");
-            modelBuilder.Entity<JIRA_ISSUE>()
+            modelBuilder.Entity<ISSUE>()
                 .HasKey(x => x.JIRAIDENTIFIER);
-            modelBuilder.Entity<JIRA_ISSUE_HISTORY>()
+            modelBuilder.Entity<ISSUE_HISTORY>()
                 .HasKey(x => x.ID);
-            modelBuilder.Entity<JIRA_LOG>()
+            modelBuilder.Entity<LOG>()
                 .HasKey(x => x.ID);
         }
     }
 
-    [Table("JIRA_ISSUE")]
-    public partial class JIRA_ISSUE
+    [Table("ISSUE")]
+    public partial class ISSUE
     {
         [StringLength(255)]
         public string JIRAIDENTIFIER { get; set; }
@@ -55,9 +54,9 @@ namespace SDP2Jira
         public string DIRECTION { get; set; }
     }
 
-    
-    [Table("JIRA_ISSUE_HISTORY")]
-    public partial class JIRA_ISSUE_HISTORY
+
+    [Table("ISSUE_HISTORY")]
+    public partial class ISSUE_HISTORY
     {
         [StringLength(255)]
         public string ID { get; set; }
@@ -72,8 +71,8 @@ namespace SDP2Jira
         public string TOVALUE { get; set; }
     }
 
-    [Table("JIRA_LOG")]
-    public partial class JIRA_LOG
+    [Table("LOG")]
+    public partial class LOG
     {
         public int ID { get; set; }
         public DateTime LOGDATE { get; set; }
@@ -91,7 +90,7 @@ namespace SDP2Jira
         public string VERSION { get; set; }
     }
 
-    public class GalaxyLogger
+    public class DbLogger
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
         public void SaveLog(string type, string message)
@@ -102,20 +101,27 @@ namespace SDP2Jira
             foreach (IPAddress ipAddress in ipHostEntry.AddressList)
                 if (ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                     hostIP = ipAddress.ToString();
-            using (GalaxyDB galaxyDB = new GalaxyDB())
+            BIDbContext context = new BIDbContext();
+            var log = new LOG()
             {
-                var jira_log = new JIRA_LOG()
-                {
-                    LOGDATE = DateTime.Now,
-                    LOGLEVEL = type,
-                    USERNAME = Environment.UserName,
-                    HOSTNAME = hostName,
-                    HOSTIP = hostIP,
-                    MESSAGE = message.Length > 4000 ? message.Substring(0, 4000) : message,
-                    VERSION = Assembly.GetExecutingAssembly().GetName().Version.ToString()
+                LOGDATE = DateTime.Now,
+                LOGLEVEL = type,
+                USERNAME = Environment.UserName,
+                HOSTNAME = hostName,
+                HOSTIP = hostIP,
+                MESSAGE = message.Length > 4000 ? message.Substring(0, 4000) : message,
+                VERSION = Assembly.GetExecutingAssembly().GetName().Version.ToString()
             };
-                galaxyDB.JIRA_LOG.Add(jira_log);
-                galaxyDB.SaveChanges();
+            context.LOG.Add(log);
+            try
+            {
+                context.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Ошибка подключения к серверу логгирования!\r\n" + ex.Message);
+                Console.ReadKey();
+                Environment.Exit(0);
             }
         }
         public void Info(string message)

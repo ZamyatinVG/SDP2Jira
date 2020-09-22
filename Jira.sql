@@ -1,0 +1,224 @@
+USE [master]
+GO
+/****** Object:  Database [Jira]    Script Date: 09/22/2020 22:00:00 ******/
+CREATE DATABASE [Jira] ON  PRIMARY 
+( NAME = N'Jira', FILENAME = N'E:\MSSQL.BI\DATA\Jira.mdf' , SIZE = 1048576KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
+ LOG ON 
+( NAME = N'Jira_log', FILENAME = N'E:\MSSQL.BI\DATA\Jira_log.ldf' , SIZE = 131072KB , MAXSIZE = 2048GB , FILEGROWTH = 10%)
+GO
+ALTER DATABASE [Jira] SET COMPATIBILITY_LEVEL = 100
+GO
+IF (1 = FULLTEXTSERVICEPROPERTY('IsFullTextInstalled'))
+begin
+EXEC [Jira].[dbo].[sp_fulltext_database] @action = 'enable'
+end
+GO
+ALTER DATABASE [Jira] SET ANSI_NULL_DEFAULT OFF
+GO
+ALTER DATABASE [Jira] SET ANSI_NULLS OFF
+GO
+ALTER DATABASE [Jira] SET ANSI_PADDING OFF
+GO
+ALTER DATABASE [Jira] SET ANSI_WARNINGS OFF
+GO
+ALTER DATABASE [Jira] SET ARITHABORT OFF
+GO
+ALTER DATABASE [Jira] SET AUTO_CLOSE OFF
+GO
+ALTER DATABASE [Jira] SET AUTO_CREATE_STATISTICS ON
+GO
+ALTER DATABASE [Jira] SET AUTO_SHRINK OFF
+GO
+ALTER DATABASE [Jira] SET AUTO_UPDATE_STATISTICS ON
+GO
+ALTER DATABASE [Jira] SET CURSOR_CLOSE_ON_COMMIT OFF
+GO
+ALTER DATABASE [Jira] SET CURSOR_DEFAULT  GLOBAL
+GO
+ALTER DATABASE [Jira] SET CONCAT_NULL_YIELDS_NULL OFF
+GO
+ALTER DATABASE [Jira] SET NUMERIC_ROUNDABORT OFF
+GO
+ALTER DATABASE [Jira] SET QUOTED_IDENTIFIER OFF
+GO
+ALTER DATABASE [Jira] SET RECURSIVE_TRIGGERS OFF
+GO
+ALTER DATABASE [Jira] SET  DISABLE_BROKER
+GO
+ALTER DATABASE [Jira] SET AUTO_UPDATE_STATISTICS_ASYNC OFF
+GO
+ALTER DATABASE [Jira] SET DATE_CORRELATION_OPTIMIZATION OFF
+GO
+ALTER DATABASE [Jira] SET TRUSTWORTHY OFF
+GO
+ALTER DATABASE [Jira] SET ALLOW_SNAPSHOT_ISOLATION OFF
+GO
+ALTER DATABASE [Jira] SET PARAMETERIZATION SIMPLE
+GO
+ALTER DATABASE [Jira] SET READ_COMMITTED_SNAPSHOT OFF
+GO
+ALTER DATABASE [Jira] SET HONOR_BROKER_PRIORITY OFF
+GO
+ALTER DATABASE [Jira] SET  READ_WRITE
+GO
+ALTER DATABASE [Jira] SET RECOVERY FULL
+GO
+ALTER DATABASE [Jira] SET  MULTI_USER
+GO
+ALTER DATABASE [Jira] SET PAGE_VERIFY CHECKSUM
+GO
+ALTER DATABASE [Jira] SET DB_CHAINING OFF
+GO
+EXEC sys.sp_db_vardecimal_storage_format N'Jira', N'ON'
+GO
+USE [Jira]
+GO
+/****** Object:  User [NT SERVICE\HealthService]    Script Date: 09/22/2020 22:00:00 ******/
+CREATE USER [NT SERVICE\HealthService] FOR LOGIN [NT SERVICE\HealthService]
+GO
+/****** Object:  User [jirabot]    Script Date: 09/22/2020 22:00:00 ******/
+CREATE USER [jirabot] FOR LOGIN [jirabot] WITH DEFAULT_SCHEMA=[dbo]
+GO
+/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 09/22/2020 22:00:02 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[ISSUE_HISTORY](
+	[ID] [nvarchar](255) NOT NULL,
+	[JIRAIDENTIFIER] [nvarchar](255) NULL,
+	[CREATEDDATE] [datetime] NULL,
+	[FIELDNAME] [nvarchar](255) NULL,
+	[FROMVALUE] [nvarchar](255) NULL,
+	[TOVALUE] [nvarchar](255) NULL,
+ CONSTRAINT [PK_JIRA_ISSUE_HISTORY] PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[ISSUE]    Script Date: 09/22/2020 22:00:02 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[ISSUE](
+	[JIRAIDENTIFIER] [nvarchar](255) NOT NULL,
+	[KEY] [nvarchar](255) NULL,
+	[PRIORITY] [nvarchar](255) NULL,
+	[CREATED] [datetime] NULL,
+	[REPORTERUSER] [nvarchar](255) NULL,
+	[ASSIGNEEUSER] [nvarchar](255) NULL,
+	[SUMMARY] [nvarchar](255) NULL,
+	[STATUSNAME] [nvarchar](255) NULL,
+	[RATE] [int] NULL,
+	[CATEGORY] [nvarchar](255) NULL,
+	[DIRECTION] [nvarchar](255) NULL,
+ CONSTRAINT [PK_JIRA_ISSUE] PRIMARY KEY CLUSTERED 
+(
+	[JIRAIDENTIFIER] ASC
+)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[LOG]    Script Date: 09/22/2020 22:00:02 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[LOG](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[LOGDATE] [datetime] NULL,
+	[LOGLEVEL] [nvarchar](255) NULL,
+	[USERNAME] [nvarchar](255) NULL,
+	[HOSTNAME] [nvarchar](255) NULL,
+	[HOSTIP] [nvarchar](20) NULL,
+	[MESSAGE] [nvarchar](4000) NULL,
+	[VERSION] [nvarchar](20) NULL,
+ CONSTRAINT [PK_JIRA_LOG] PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 09/22/2020 22:00:03 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE view [dbo].[ISSUE_STATS] as
+with gen as 
+	 (
+		select 0 AS num
+		union all
+		select num + 1 from gen where num < 1000
+		
+	 )
+select '''' + convert(nvarchar, fday) fday, 
+       t.assigneeuser, t.statusname, t.category, t.direction,
+       sum(t.open_count) open_count,  
+       sum(t.open_point) open_point,
+       sum(t.closed_count) closed_count,
+       sum(t.closed_point) closed_point,  
+       sum(t.all_count) all_count,
+       sum(t.all_point) all_point        
+	from
+	(
+		select  t.*,
+				case when t.statusname <> '10. Закрыта' then t.point else 0 end open_point,
+				case when t.statusname <> '10. Закрыта' then t.count else 0 end open_count,
+				case when t.statusname = '10. Закрыта' then t.point else 0 end closed_point,
+				case when t.statusname = '10. Закрыта' then t.count else 0 end closed_count,
+				t.point all_point,
+				t.count all_count,
+				row_number() over (partition by t.jiraidentifier, t.statusname order by t.fday) r2
+		from
+		(
+			select ji.jiraidentifier,
+				   calendar.fday,
+				   case
+					 when ji.assigneeuser in ('Замятин Вячеслав Геннадьевич',
+											  'Гаменюк Аким Юрьевич',
+											  'Горячевский Виктор Николаевич',
+											  'Карашманова Ирина Михайловна',
+											  'Никоноренков Алексей Валентинович',
+											  'Торопов Роман Александрович',
+											  'Фомичев Андрей Олегович')
+					 then 'Dev: ' + ji.assigneeuser
+					 else 'Sup: ' + ji.assigneeuser
+				   end assigneeuser,
+				   case 
+					 when jih.tovalue is null and convert(date, ji.created) <= convert(date, calendar.fday) then '01. Новая'
+					 when jih.tovalue in ('Новая', 'Бэклог') then '01. Новая'
+					 when jih.tovalue in ('To Do') then '02. Сделать'
+					 when jih.tovalue in ('В работе') then '03. В работе'
+					 when jih.tovalue in ('TODAY') then '04. На сегодня'
+					 when jih.tovalue in ('Ожидание Заказчика') then '05. Ожидание Заказчика'
+					 when jih.tovalue in ('Ожидание ИТ') then '06. Ожидание ИТ'
+					 when jih.tovalue in ('Приёмка', 'Тестирование') then '07. Тестирование'
+					 when jih.tovalue in ('Риски ИТ') then '08. Риски ИТ'
+					 when jih.tovalue in ('Риски заказчика') then '09. Риски заказчика'
+					 when jih.tovalue in ('Выполнена', 'Отменена', 'Done', 'Закрыта') then '10. Закрыта'
+					 else ' '
+				   end statusname,
+				   isnull(ji.category, ' ') category,
+				   isnull(ji.direction, ' ') direction,
+				   1 count,
+				   case when ji.rate = 0 then 5 else ji.rate end point,
+				   row_number() over (partition by calendar.fday, ji.jiraidentifier order by jih.createddate desc) r1
+			  from
+			  (
+				  select dateadd(day, num, convert(date, '2020-06-17')) fday
+					from gen
+			  ) calendar
+			  left join dbo.issue ji on convert(date, calendar.fday) >= convert(date, ji.created) 
+			  left join dbo.issue_history jih on convert(date, calendar.fday) >= convert(date, jih.createddate) 
+	    									  and jih.jiraidentifier = ji.jiraidentifier
+			  where calendar.fday < getdate()
+		) t
+		where t.r1 = 1
+	) t
+	where (t.statusname <> '10. Закрыта' or (t.statusname = '10. Закрыта' and t.r2 <= 7))
+	and datepart(weekday, t.fday) not in ('7', '1')
+	group by t.fday, t.assigneeuser, t.statusname, t.category, t.direction
+	--option (maxrecursion 10000)
+GO

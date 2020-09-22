@@ -12,7 +12,7 @@ namespace SDP2Jira
     class Program
     {
         private static Jira jira;
-        private static readonly GalaxyLogger Logger = new GalaxyLogger();
+        private static readonly DbLogger Logger = new DbLogger();
 
         private static List<string> supportList;
         private static string HtmlToPlainText(string html)
@@ -81,6 +81,7 @@ namespace SDP2Jira
                 if (args[0] == "-stats")
                     GetStats();
             Logger.Info("Завершение работы программы.");
+            Console.ReadKey();
         }
         private static void GetSupportList()
         {
@@ -227,52 +228,55 @@ namespace SDP2Jira
                 if (IsLoginExists(null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
-                    var issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
-                    using (GalaxyDB galaxyDB = new GalaxyDB())
+                    var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    using (BIDbContext context = new BIDbContext())
                     {
-                        foreach (Issue issue in issues)
+                        foreach (Issue jira_issue in jira_issues)
                         {
-                            JIRA_ISSUE jira_Issue = galaxyDB.JIRA_ISSUE.Where(x => x.JIRAIDENTIFIER == issue.JiraIdentifier).FirstOrDefault();
-                            if (jira_Issue == null)
+                            ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
+                            if (issue == null)
                             {
-                                jira_Issue = new JIRA_ISSUE();
-                                jira_Issue.JIRAIDENTIFIER = issue.JiraIdentifier;
-                                galaxyDB.JIRA_ISSUE.Add(jira_Issue);
+                                issue = new ISSUE
+                                {
+                                    JIRAIDENTIFIER = jira_issue.JiraIdentifier
+                                };
+                                context.ISSUE.Add(issue);
                             }
-                            jira_Issue.KEY = issue.Key.Value;
-                            jira_Issue.PRIORITY = issue.Priority.Name;
-                            jira_Issue.CREATED = issue.Created;
-                            jira_Issue.REPORTERUSER = issue.ReporterUser.DisplayName;
-                            jira_Issue.ASSIGNEEUSER = issue.AssigneeUser.DisplayName;
-                            jira_Issue.SUMMARY = issue.Summary;
-                            jira_Issue.STATUSNAME = issue.Status.Name;
-                            jira_Issue.RATE = issue["Оценка"] == null ? 0 : Convert.ToInt32(issue["Оценка"].Value);
-                            jira_Issue.CATEGORY = issue["Категория"] == null ? null : issue["Категория"].Value.ToString();
-                            jira_Issue.DIRECTION = issue["Направление"] == null ? null : issue["Направление"].Value.ToString();
+                            issue.KEY = jira_issue.Key.Value;
+                            issue.PRIORITY = jira_issue.Priority.Name;
+                            issue.CREATED = jira_issue.Created;
+                            issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
+                            issue.ASSIGNEEUSER = jira_issue.AssigneeUser.DisplayName;
+                            issue.SUMMARY = jira_issue.Summary;
+                            issue.STATUSNAME = jira_issue.Status.Name;
+                            issue.RATE = jira_issue["Оценка"] == null ? 0 : Convert.ToInt32(jira_issue["Оценка"].Value);
+                            issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
+                            issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
 
-
-                            var changeLog = issue.GetChangeLogsAsync().Result;
+                            var changeLog = jira_issue.GetChangeLogsAsync().Result;
                             foreach (var history in changeLog)
                                 foreach (var item in history.Items)
                                     if (item.FieldName == "status")
                                     {
-                                        JIRA_ISSUE_HISTORY jira_Issue_History = galaxyDB.JIRA_ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
-                                        if (jira_Issue_History == null)
+                                        ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                        if (issue_History == null)
                                         {
-                                            jira_Issue_History = new JIRA_ISSUE_HISTORY();
-                                            jira_Issue_History.ID = history.Id;
-                                            galaxyDB.JIRA_ISSUE_HISTORY.Add(jira_Issue_History);
+                                            issue_History = new ISSUE_HISTORY
+                                            {
+                                                ID = history.Id
+                                            };
+                                            context.ISSUE_HISTORY.Add(issue_History);
                                         }
-                                        jira_Issue_History.JIRAIDENTIFIER = issue.JiraIdentifier;
-                                        jira_Issue_History.CREATEDDATE = history.CreatedDate;
-                                        jira_Issue_History.FIELDNAME = item.FieldName;
-                                        jira_Issue_History.FROMVALUE = item.FromValue;
-                                        jira_Issue_History.TOVALUE = item.ToValue;
+                                        issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
+                                        issue_History.CREATEDDATE = history.CreatedDate;
+                                        issue_History.FIELDNAME = item.FieldName;
+                                        issue_History.FROMVALUE = item.FromValue;
+                                        issue_History.TOVALUE = item.ToValue;
                                     }
                         }
-                        galaxyDB.SaveChanges();
+                        context.SaveChanges();
                     }
-                    Logger.Info($"Загружено {issues.Count} задач по специалисту {supportName}.");
+                    Logger.Info($"Загружено {jira_issues.Count} задач по специалисту {supportName}.");
                 }
             }
         }
