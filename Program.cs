@@ -173,8 +173,20 @@ namespace SDP2Jira
                         issue["Номер заявки SD"] = request.Id;
                         issue.Type = "10301"; //Task
                         issue.Summary = $"{request.Id} {request.Subject}";
-                        issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                        issue["Категория"] = request.Subcategory == null ? "" : request.Subcategory.Name;
+                        if (request.Udf_fields.Udf_pick_3901 == null)
+                        {
+                            Logger.Error("Не заполнено поле \"Направление\"!");
+                            continue;
+                        } 
+                        else
+                            issue["Направление"] = request.Udf_fields.Udf_pick_3901;
+                        if (request.Subcategory == null)
+                        {
+                            Logger.Error("Не заполнены поля \"Категория/Подкатегория\"!");
+                            continue;
+                        }
+                        else
+                            issue["Категория"] = request.Subcategory.Name;
                         try
                         {
                             issue.SaveChanges();

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <Version>0.9.8</Version>
+    <Version>0.9.10</Version>
     <Authors>ZamyatinVG</Authors>
     <Company />
     <ApplicationIcon>jira-256.ico</ApplicationIcon>
