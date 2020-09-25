@@ -1,6 +1,6 @@
 USE [master]
 GO
-/****** Object:  Database [Jira]    Script Date: 09/22/2020 22:00:00 ******/
+/****** Object:  Database [Jira]    Script Date: 09/25/2020 09:51:01 ******/
 CREATE DATABASE [Jira] ON  PRIMARY 
 ( NAME = N'Jira', FILENAME = N'E:\MSSQL.BI\DATA\Jira.mdf' , SIZE = 1048576KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
  LOG ON 
@@ -73,13 +73,13 @@ EXEC sys.sp_db_vardecimal_storage_format N'Jira', N'ON'
 GO
 USE [Jira]
 GO
-/****** Object:  User [NT SERVICE\HealthService]    Script Date: 09/22/2020 22:00:00 ******/
+/****** Object:  User [NT SERVICE\HealthService]    Script Date: 09/25/2020 09:51:01 ******/
 CREATE USER [NT SERVICE\HealthService] FOR LOGIN [NT SERVICE\HealthService]
 GO
-/****** Object:  User [jirabot]    Script Date: 09/22/2020 22:00:00 ******/
+/****** Object:  User [jirabot]    Script Date: 09/25/2020 09:51:01 ******/
 CREATE USER [jirabot] FOR LOGIN [jirabot] WITH DEFAULT_SCHEMA=[dbo]
 GO
-/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 09/22/2020 22:00:02 ******/
+/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 09/25/2020 09:51:01 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -97,7 +97,7 @@ CREATE TABLE [dbo].[ISSUE_HISTORY](
 )WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[ISSUE]    Script Date: 09/22/2020 22:00:02 ******/
+/****** Object:  Table [dbo].[ISSUE]    Script Date: 09/25/2020 09:51:01 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -114,13 +114,14 @@ CREATE TABLE [dbo].[ISSUE](
 	[RATE] [int] NULL,
 	[CATEGORY] [nvarchar](255) NULL,
 	[DIRECTION] [nvarchar](255) NULL,
+	[UPDATED] [datetime] NULL,
  CONSTRAINT [PK_JIRA_ISSUE] PRIMARY KEY CLUSTERED 
 (
 	[JIRAIDENTIFIER] ASC
 )WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[LOG]    Script Date: 09/22/2020 22:00:02 ******/
+/****** Object:  Table [dbo].[LOG]    Script Date: 09/25/2020 09:51:01 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -140,7 +141,7 @@ CREATE TABLE [dbo].[LOG](
 )WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 09/22/2020 22:00:03 ******/
+/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 09/25/2020 09:51:01 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON

@@ -242,37 +242,41 @@ namespace SDP2Jira
                                 };
                                 context.ISSUE.Add(issue);
                             }
-                            issue.KEY = jira_issue.Key.Value;
-                            issue.PRIORITY = jira_issue.Priority.Name;
-                            issue.CREATED = jira_issue.Created;
-                            issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
-                            issue.ASSIGNEEUSER = jira_issue.AssigneeUser.DisplayName;
-                            issue.SUMMARY = jira_issue.Summary;
-                            issue.STATUSNAME = jira_issue.Status.Name;
-                            issue.RATE = jira_issue["Оценка"] == null ? 0 : Convert.ToInt32(jira_issue["Оценка"].Value);
-                            issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
-                            issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
+                            if (jira_issue.Updated != issue.UPDATED)
+                            {
+                                issue.KEY = jira_issue.Key.Value;
+                                issue.PRIORITY = jira_issue.Priority.Name;
+                                issue.CREATED = jira_issue.Created;
+                                issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
+                                issue.ASSIGNEEUSER = jira_issue.AssigneeUser.DisplayName;
+                                issue.SUMMARY = jira_issue.Summary;
+                                issue.STATUSNAME = jira_issue.Status.Name;
+                                issue.RATE = jira_issue["Оценка"] == null ? 0 : Convert.ToInt32(jira_issue["Оценка"].Value);
+                                issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
+                                issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
+                                issue.UPDATED = jira_issue.Updated;
 
-                            var changeLog = jira_issue.GetChangeLogsAsync().Result;
-                            foreach (var history in changeLog)
-                                foreach (var item in history.Items)
-                                    if (item.FieldName == "status")
-                                    {
-                                        ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
-                                        if (issue_History == null)
+                                var changeLog = jira_issue.GetChangeLogsAsync().Result;
+                                foreach (var history in changeLog)
+                                    foreach (var item in history.Items)
+                                        if (item.FieldName == "status")
                                         {
-                                            issue_History = new ISSUE_HISTORY
+                                            ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                            if (issue_History == null)
                                             {
-                                                ID = history.Id
-                                            };
-                                            context.ISSUE_HISTORY.Add(issue_History);
+                                                issue_History = new ISSUE_HISTORY
+                                                {
+                                                    ID = history.Id
+                                                };
+                                                context.ISSUE_HISTORY.Add(issue_History);
+                                            }
+                                            issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
+                                            issue_History.CREATEDDATE = history.CreatedDate;
+                                            issue_History.FIELDNAME = item.FieldName;
+                                            issue_History.FROMVALUE = item.FromValue;
+                                            issue_History.TOVALUE = item.ToValue;
                                         }
-                                        issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
-                                        issue_History.CREATEDDATE = history.CreatedDate;
-                                        issue_History.FIELDNAME = item.FieldName;
-                                        issue_History.FROMVALUE = item.FromValue;
-                                        issue_History.TOVALUE = item.ToValue;
-                                    }
+                            }
                         }
                         context.SaveChanges();
                     }

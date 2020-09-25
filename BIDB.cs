@@ -52,8 +52,8 @@ namespace SDP2Jira
         public string CATEGORY { get; set; }
         [StringLength(255)]
         public string DIRECTION { get; set; }
+        public DateTime? UPDATED { get; set; }
     }
-
 
     [Table("ISSUE_HISTORY")]
     public partial class ISSUE_HISTORY
