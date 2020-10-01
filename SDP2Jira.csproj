@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <Version>0.9.10</Version>
+    <Version>0.9.11</Version>
     <Authors>ZamyatinVG</Authors>
     <Company />
     <ApplicationIcon>jira-256.ico</ApplicationIcon>
@@ -14,6 +14,7 @@
     <None Remove=".gitignore" />
     <None Remove="CHANGELOG.md" />
     <None Remove="JIRA.pck" />
+    <None Remove="Jira.sql" />
     <None Remove="README.md" />
   </ItemGroup>
 

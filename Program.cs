@@ -80,6 +80,9 @@ namespace SDP2Jira
             else
                 if (args[0] == "-stats")
                     GetStats();
+            else
+                    if (args[0] == "-week")
+                        UpdateWeeklyPriority();
             Logger.Info("Завершение работы программы.");
             Console.ReadKey();
         }
@@ -236,7 +239,6 @@ namespace SDP2Jira
         private static void GetStats()
         {
             foreach (string supportName in supportList)
-            {
                 if (IsLoginExists(null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
@@ -294,7 +296,26 @@ namespace SDP2Jira
                     }
                     Logger.Info($"Загружено {jira_issues.Count} задач по специалисту {supportName}.");
                 }
-            }
+        }
+        private static void UpdateWeeklyPriority()
+        {
+            foreach (string supportName in supportList)
+                if (IsLoginExists(null, supportName, out string login))
+                {
+                    jira.Issues.MaxIssuesPerRequest = 1000;
+                    var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    foreach (Issue jira_issue in jira_issues.Where(x => x.Type.Id == "10003" && //SubTask
+                                                                        x.Status.StatusCategory.Key != "done")) 
+                    {
+                        var parent_issue = jira.Issues.Queryable.Where(x => x.Key == jira_issue.ParentIssueKey).First();
+                        if (jira_issue["Неделя, приоритет"]?.Value != parent_issue["Неделя, приоритет"]?.Value)
+                        {
+                            jira_issue["Неделя, приоритет"] = parent_issue["Неделя, приоритет"]?.Value;
+                            jira_issue.SaveChanges();
+                            Logger.Info($"По специалисту {supportName} у подзадачи {jira_issue.Key} обновление атрибут \"Неделя приоритет\".");
+                        }
+                    }
+                }
         }
     }
 }
