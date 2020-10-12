@@ -80,11 +80,11 @@ namespace SDP2Jira
             else
                 if (args[0] == "-stats")
                     GetStats();
-            else
+                else
                     if (args[0] == "-week")
                         UpdateWeeklyPriority();
             Logger.Info("Завершение работы программы.");
-            Console.ReadKey();
+            //Console.ReadKey();
         }
         private static void GetSupportList()
         {
@@ -150,25 +150,7 @@ namespace SDP2Jira
                         Logger.Info($"В Jira уже есть задача {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} по заявке {request.Id}!");
                     else
                     {
-                        //парсим визуальные вложения в описании заявки
-                        string description = request.Description ?? "";
-                        while (description.Length > 0)
-                        {
-                            int index = description.IndexOf("src=\"");
-                            if (index < 0)
-                                description = "";
-                            else
-                            {
-                                SDP.Request.Attachment attachment = new SDP.Request.Attachment();
-                                description = description.Substring(index + 5);
-                                index = description.IndexOf("\"");
-                                attachment.Content_url = description.Substring(0, index);
-                                index = attachment.Content_url.LastIndexOf("/");
-                                attachment.File_name = attachment.Content_url.Substring(index + 1);
-                                request.Attachments.Add(attachment);
-                                Logger.Info($"Найдено вложение в описании: Content_url = {attachment.Content_url}, File_name = {attachment.File_name}");
-                            }
-                        }
+                        request.ParseDescription(request.Description ?? "");
                         var issue = jira.CreateIssue("ERP");
                         issue.Reporter = request.AuthorLogin;
                         issue.Assignee = request.SpecialistLogin;
@@ -200,6 +182,48 @@ namespace SDP2Jira
                             Logger.Error($"Ошибка создания задачи в Jira по заявке {request.Id}!\r\n" + ex.Message);
                             continue;
                         }
+                        if (request.Has_notes)
+                        {
+                            try
+                            {
+                                SDP.GetNotes(request.Id);
+                                Logger.Info($"По заявке {request.Id} получено {SDP.noteList.notes.Count} примечаний.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error($"Ошибка получения списка примечаний по заявке {request.Id}!\r\n" + ex.Message);
+                            }
+                            foreach (var nt in SDP.noteList.notes)
+                            {
+                                SDP.Note note = new SDP.Note();
+                                try
+                                {
+                                    note = SDP.GetNote(request.Id, nt.Id);
+                                    Logger.Info($"По заявке {request.Id} получено примечание {note.Id}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error($"Ошибка получения примечания {nt.Id} по заявке {request.Id}!\r\n" + ex.Message);
+                                }
+                                if (IsLoginExists(note.Created_by.Email_id, null, out string notelogin))
+                                {
+                                    Logger.Info($"Автор примечания: {notelogin}");
+                                    note.AuthorLogin = notelogin;
+                                }
+                                else
+                                {
+                                    Logger.Error("Не удалось определить логин автора примечания!");
+                                    continue;
+                                }
+                                request.ParseDescription(note.Description ?? "");
+                                Comment comment = new Comment()
+                                {
+                                    Author = note.AuthorLogin,
+                                    Body = HtmlToPlainText(note.Description ?? "")
+                                };
+                                issue.AddCommentAsync(comment);
+                            }
+                        }
                         if (request.Attachments.Count > 0)
                         {
                             Logger.Info($"Начата загрузка вложений по заявке {request.Id}.");
@@ -227,6 +251,7 @@ namespace SDP2Jira
                                 File.Delete("files\\" + attachment.File_name);
                             }
                         }
+
                         string result = SDP.CloseRequest(request.Id, out string status_code);
                         if (status_code == "2000")
                             Logger.Info(result);
@@ -312,7 +337,7 @@ namespace SDP2Jira
                         {
                             jira_issue["Неделя, приоритет"] = parent_issue["Неделя, приоритет"]?.Value;
                             jira_issue.SaveChanges();
-                            Logger.Info($"По специалисту {supportName} у подзадачи {jira_issue.Key} обновление атрибут \"Неделя приоритет\".");
+                            Logger.Info($"По специалисту {supportName} у подзадачи {jira_issue.Key} обновлен атрибут \"Неделя, приоритет\".");
                         }
                     }
                 }
