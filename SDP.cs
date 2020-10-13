@@ -21,6 +21,7 @@ namespace SDP2Jira
             {
                 public string File_name { get; set; }
                 public string Content_url { get; set; }
+                public int Type { get; set; }
             }
             public string Id { get; set; }
             public Sub Requester { get; set; }
@@ -35,7 +36,7 @@ namespace SDP2Jira
             public string AuthorLogin { get; set; }
             public string SpecialistLogin { get; set; }
             public bool Has_notes { get; set; }
-            public void ParseDescription(string description)
+            public void ParseDescription(string description, int type)
             {
                 //парсим визуальные вложения в описании заявки
                 while (description.Length > 0)
@@ -51,6 +52,7 @@ namespace SDP2Jira
                         attachment.Content_url = description.Substring(0, index);
                         index = attachment.Content_url.LastIndexOf("/");
                         attachment.File_name = attachment.Content_url.Substring(index + 1);
+                        attachment.Type = type;
                         this.Attachments.Add(attachment);
                     }
                 }

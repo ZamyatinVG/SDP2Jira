@@ -84,7 +84,6 @@ namespace SDP2Jira
                     if (args[0] == "-week")
                         UpdateWeeklyPriority();
             Logger.Info("Завершение работы программы.");
-            //Console.ReadKey();
         }
         private static void GetSupportList()
         {
@@ -150,7 +149,7 @@ namespace SDP2Jira
                         Logger.Info($"В Jira уже есть задача {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} по заявке {request.Id}!");
                     else
                     {
-                        request.ParseDescription(request.Description ?? "");
+                        request.ParseDescription(request.Description ?? "", 0);
                         var issue = jira.CreateIssue("ERP");
                         issue.Reporter = request.AuthorLogin;
                         issue.Assignee = request.SpecialistLogin;
@@ -215,12 +214,15 @@ namespace SDP2Jira
                                     Logger.Error("Не удалось определить логин автора примечания!");
                                     continue;
                                 }
-                                request.ParseDescription(note.Description ?? "");
+                                request.ParseDescription(note.Description ?? "", 1);
                                 Comment comment = new Comment()
                                 {
                                     Author = note.AuthorLogin,
                                     Body = HtmlToPlainText(note.Description ?? "")
                                 };
+                                foreach (SDP.Request.Attachment attachment in request.Attachments)
+                                    if (attachment.Type == 1)
+                                        comment.Body += $"[^{attachment.File_name}]";
                                 issue.AddCommentAsync(comment);
                             }
                         }
@@ -251,7 +253,6 @@ namespace SDP2Jira
                                 File.Delete("files\\" + attachment.File_name);
                             }
                         }
-
                         string result = SDP.CloseRequest(request.Id, out string status_code);
                         if (status_code == "2000")
                             Logger.Info(result);
