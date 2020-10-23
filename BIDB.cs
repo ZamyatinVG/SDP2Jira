@@ -47,7 +47,7 @@ namespace SDP2Jira
         public string SUMMARY { get; set; }
         [StringLength(255)]
         public string STATUSNAME { get; set; }
-        public int RATE { get; set; }
+        public int STORYPOINTS { get; set; }
         [StringLength(255)]
         public string CATEGORY { get; set; }
         [StringLength(255)]

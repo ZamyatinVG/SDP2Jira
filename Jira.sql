@@ -1,6 +1,6 @@
 USE [master]
 GO
-/****** Object:  Database [Jira]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  Database [Jira]    Script Date: 23.10.2020 12:13:51 ******/
 CREATE DATABASE [Jira] ON  PRIMARY 
 ( NAME = N'Jira', FILENAME = N'E:\MSSQL.BI\DATA\Jira.mdf' , SIZE = 1048576KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
  LOG ON 
@@ -69,15 +69,15 @@ EXEC sys.sp_db_vardecimal_storage_format N'Jira', N'ON'
 GO
 USE [Jira]
 GO
-/****** Object:  User [NT SERVICE\HealthService]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  User [NT SERVICE\HealthService]    Script Date: 23.10.2020 12:13:52 ******/
 CREATE USER [NT SERVICE\HealthService] FOR LOGIN [NT SERVICE\HealthService]
 GO
-/****** Object:  User [jirabot]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  User [jirabot]    Script Date: 23.10.2020 12:13:52 ******/
 CREATE USER [jirabot] FOR LOGIN [jirabot] WITH DEFAULT_SCHEMA=[dbo]
 GO
 sys.sp_addrolemember @rolename = N'db_owner', @membername = N'jirabot'
 GO
-/****** Object:  Table [dbo].[ISSUE]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  Table [dbo].[ISSUE]    Script Date: 23.10.2020 12:13:52 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -91,7 +91,7 @@ CREATE TABLE [dbo].[ISSUE](
 	[ASSIGNEEUSER] [nvarchar](255) NULL,
 	[SUMMARY] [nvarchar](255) NULL,
 	[STATUSNAME] [nvarchar](255) NULL,
-	[RATE] [int] NULL,
+	[STORYPOINTS] [int] NULL,
 	[CATEGORY] [nvarchar](255) NULL,
 	[DIRECTION] [nvarchar](255) NULL,
 	[UPDATED] [datetime] NULL,
@@ -101,7 +101,7 @@ CREATE TABLE [dbo].[ISSUE](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 23.10.2020 12:13:52 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -119,7 +119,7 @@ CREATE TABLE [dbo].[ISSUE_HISTORY](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[LOG]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  Table [dbo].[LOG]    Script Date: 23.10.2020 12:13:52 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -139,7 +139,7 @@ CREATE TABLE [dbo].[LOG](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 23.10.2020 12:13:52 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -150,11 +150,12 @@ CREATE TABLE [dbo].[SERVICEDESK_WO](
 	[opencount] [int] NULL
 ) ON [PRIMARY]
 GO
-/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 16.10.2020 9:36:29 ******/
+/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 23.10.2020 12:13:52 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 
 
 CREATE view [dbo].[ISSUE_STATS] as
@@ -216,7 +217,7 @@ select '''' + convert(nvarchar, t.fday) fday,
 				   isnull(ji.category, ' ') category,
 				   isnull(ji.direction, ' ') direction,
 				   1 count,
-				   case when ji.rate = 0 then 5 else ji.rate end point,
+				   case when ji.storypoints = 0 then 5 else ji.storypoints end point,
 				   row_number() over (partition by calendar.fday, ji.jiraidentifier order by jih.createddate desc) r1
 			  from
 			  (

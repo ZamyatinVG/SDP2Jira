@@ -83,6 +83,7 @@ namespace SDP2Jira
                 else
                     if (args[0] == "-week")
                         UpdateWeeklyPriority();
+            //UpdateStoryPoints();
             Logger.Info("Завершение работы программы.");
         }
         private static void GetSupportList()
@@ -291,7 +292,7 @@ namespace SDP2Jira
                                 issue.ASSIGNEEUSER = jira_issue.AssigneeUser.DisplayName;
                                 issue.SUMMARY = jira_issue.Summary;
                                 issue.STATUSNAME = jira_issue.Status.Name;
-                                issue.RATE = jira_issue["Оценка"] == null ? 0 : Convert.ToInt32(jira_issue["Оценка"].Value);
+                                issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToInt32(jira_issue["Story Points"].Value);
                                 issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
                                 issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
                                 issue.UPDATED = jira_issue.Updated;
@@ -339,6 +340,24 @@ namespace SDP2Jira
                             jira_issue["Неделя, приоритет"] = parent_issue["Неделя, приоритет"]?.Value;
                             jira_issue.SaveChanges();
                             Logger.Info($"По специалисту {supportName} у подзадачи {jira_issue.Key} обновлен атрибут \"Неделя, приоритет\".");
+                        }
+                    }
+                }
+        }
+        private static void UpdateStoryPoints()
+        {
+            foreach (string supportName in supportList)
+                if (IsLoginExists(null, supportName, out string login))
+                {
+                    jira.Issues.MaxIssuesPerRequest = 1000;
+                    var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    foreach (Issue jira_issue in jira_issues)
+                    {
+                        if (jira_issue["Story Points"]?.Value != jira_issue["Оценка"]?.Value)
+                        {
+                            jira_issue["Story Points"] = jira_issue["Оценка"]?.Value;
+                            jira_issue.SaveChanges();
+                            Logger.Info($"По специалисту {supportName} у залачи {jira_issue.Key} обновлен атрибут \"Story Points\".");
                         }
                     }
                 }
