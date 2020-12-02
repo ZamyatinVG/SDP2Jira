@@ -78,11 +78,14 @@ namespace SDP2Jira
             if (args.Length == 0)
                 SyncRequests();
             else
+            {
                 if (args[0] == "-stats")
                     GetStats();
-                else
-                    if (args[0] == "-week")
-                        UpdateWeeklyPriority();
+                if (args[0] == "-week")
+                    UpdateWeeklyPriority();
+                if (args[0] == "-sprint")
+                    CleanSprint();
+            }
             //UpdateStoryPoints();
             Logger.Info("Завершение работы программы.");
         }
@@ -357,7 +360,31 @@ namespace SDP2Jira
                         {
                             jira_issue["Story Points"] = jira_issue["Оценка"]?.Value;
                             jira_issue.SaveChanges();
-                            Logger.Info($"По специалисту {supportName} у залачи {jira_issue.Key} обновлен атрибут \"Story Points\".");
+                            Logger.Info($"По специалисту {supportName} у задачи {jira_issue.Key} обновлен атрибут \"Story Points\".");
+                        }
+                    }
+                }
+        }
+        private static void CleanSprint()
+        {
+            foreach (string supportName in supportList)
+                if (IsLoginExists(null, supportName, out string login))
+                {
+                    jira.Issues.MaxIssuesPerRequest = 1000;
+                    var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    foreach (Issue jira_issue in jira_issues.Where(x => x.Status.StatusCategory.Key != "done"))
+                    {
+                        if (jira_issue["Sprint"] != null && !jira_issue["Sprint"].Value.Contains("Galaxy") &&
+                            jira_issue.Key != "PIM-210" && jira_issue.Key != "PIM-219" && jira_issue.Key != "PIM-221")
+                        {
+                            jira_issue["Sprint"] = null;
+                            jira_issue.SaveChanges();
+                            Comment comment = new Comment()
+                            {
+                                Body = $"Прошу добавлять задачи для специалистов команды Галактики ({jira_issue.AssigneeUser.DisplayName}) только в спринты Galaxy. Либо по согласованию в текущий, либо в будущий."
+                            };
+                            jira_issue.AddCommentAsync(comment);
+                            Logger.Info($"По специалисту {supportName} у задачи {jira_issue.Key} удален атрибут \"Sprint\".");
                         }
                     }
                 }
