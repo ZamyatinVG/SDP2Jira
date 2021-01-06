@@ -171,9 +171,9 @@ namespace SDP2Jira
             var requestMessage = JsonConvert.DeserializeObject<RequestMessage>(response.Content);
             status_code = requestMessage.Response_status.Status_code;
             if (status_code == "2000")
-                return $"Заявка {request_id} успешно переведена в статус \"Передано в Jira\"";
+                return $"Request {request_id} succefully closed.";
             else
-                return $"Заявка {request_id} не закрыта. Причина:\n" + requestMessage.Response_status.Messages[0].Message;
+                return $"Request {request_id} not closed. Check required fields and subtasks.";
         }
         public static string GetRequestUrl(string request_id)
         {

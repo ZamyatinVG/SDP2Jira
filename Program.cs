@@ -60,25 +60,29 @@ namespace SDP2Jira
         }
         private static void Main(string[] args)
         {
-            Logger.Info("Запуск программы.");
+            Logger.Info("Program is running.");
             try
             {
                 jira = Jira.CreateRestClient(ConfigurationManager.AppSettings["JIRA_SERVER"],
                                              ConfigurationManager.AppSettings["JIRA_LOGIN"],
                                              ConfigurationManager.AppSettings["JIRA_PASS"]);
                 var project = jira.Projects.GetProjectAsync("ERP").Result;
-                Logger.Info($"Подключились к Jira: {ConfigurationManager.AppSettings["JIRA_SERVER"]} к проекту {project.Name}.");
+                Logger.Info($"Connected to Jira {ConfigurationManager.AppSettings["JIRA_SERVER"]} project {project.Name}.");
             }
             catch (Exception ex)
             {
-                Logger.Error("Ошибка подключения к Jira!\r\n" + ex.Message);
+                Logger.Error("Connection error to Jira!\r\n" + ex.Message);
                 return;
             }
-            GetSupportList();
             if (args.Length == 0)
-                SyncRequests();
+                SyncRequestsBySpecialists();
             else
             {
+                if (args[0] == "-r" && args[1]?.Length > 0)
+                    if (args.Length ==4 && args[2] == "-u" && args[3]?.Length > 0)
+                        SyncRequest(args[1], args[3]);
+                    else
+                        SyncRequest(args[1]);
                 if (args[0] == "-stats")
                     GetStats();
                 if (args[0] == "-week")
@@ -87,7 +91,7 @@ namespace SDP2Jira
                     CleanSprint();
             }
             //UpdateStoryPoints();
-            Logger.Info("Завершение работы программы.");
+            Logger.Info("Program closed.");
         }
         private static void GetSupportList()
         {
@@ -103,177 +107,207 @@ namespace SDP2Jira
                 return;
             }
         }
-        private static void SyncRequests()
-        {           
+        private static void SyncRequestsBySpecialists()
+        {
+            GetSupportList();
             foreach (string supportName in supportList)
             {
                 try
                 {
                     SDP.GetRequestList(supportName);
                     Logger.Info($"По специалисту {supportName} загружено {SDP.requestList.requests.Count} заявок.");
+                    foreach (var req in SDP.requestList.requests)
+                        SyncRequest(req.Id);
                 }
                 catch (Exception ex)
                 {
                     Logger.Error($"Ошибка получения списка заявок из SDP по специалисту {supportName}!\r\n" + ex.Message);
-                }
-                foreach (var req in SDP.requestList.requests)
-                {
-                    SDP.Request request = new SDP.Request();
-                    try
-                    {
-                        request = SDP.GetRequest(req.Id);
-                        //Logger.Info("Получены данные по заявке:\r\n" + JsonConvert.SerializeObject(request, Formatting.Indented));
-                        Logger.Info($"Получены данные по заявке {request.Id}.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error($"Ошибка получения заявки {req.Id} из SDP!\r\n" + ex.Message);
-                    }
-                    if (IsLoginExists(request.Requester.Email_id, null, out string login))
-                    {
-                        Logger.Info($"Автор: {login}");
-                        request.AuthorLogin = login;
-                    }
-                    else
-                    {
-                        Logger.Error("Не удалось определить логин автора!");
-                        continue;
-                    }
-                    if (IsLoginExists(request.Technician.Email_id, null, out login))
-                    {
-                        request.SpecialistLogin = login;
-                    }
-                    else
-                    {
-                        Logger.Error("Не удалось определить логин специалиста!");
-                        continue;
-                    }
-
-                    if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Count() > 0)
-                        Logger.Info($"В Jira уже есть задача {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} по заявке {request.Id}!");
-                    else
-                    {
-                        request.ParseDescription(request.Description ?? "", 0);
-                        var issue = jira.CreateIssue("ERP");
-                        issue.Reporter = request.AuthorLogin;
-                        issue.Assignee = request.SpecialistLogin;
-                        issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
-                        issue["Номер заявки SD"] = request.Id;
-                        issue.Type = "10301"; //Task
-                        issue.Summary = $"{request.Id} {request.Subject}";
-                        if (request.Udf_fields.Udf_pick_3901 == null)
-                        {
-                            Logger.Error("Не заполнено поле \"Направление\"!");
-                            continue;
-                        } 
-                        else
-                            issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                        if (request.Subcategory == null)
-                        {
-                            Logger.Error("Не заполнены поля \"Категория/Подкатегория\"!");
-                            continue;
-                        }
-                        else
-                            issue["Категория"] = request.Subcategory.Name;
-                        try
-                        {
-                            issue.SaveChanges();
-                            Logger.Info($"Задача {issue.Key} создана по заявке {request.Id}.");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error($"Ошибка создания задачи в Jira по заявке {request.Id}!\r\n" + ex.Message);
-                            continue;
-                        }
-                        if (request.Has_notes)
-                        {
-                            try
-                            {
-                                SDP.GetNotes(request.Id);
-                                Logger.Info($"По заявке {request.Id} получено {SDP.noteList.notes.Count} примечаний.");
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Error($"Ошибка получения списка примечаний по заявке {request.Id}!\r\n" + ex.Message);
-                            }
-                            foreach (var nt in SDP.noteList.notes)
-                            {
-                                SDP.Note note = new SDP.Note();
-                                try
-                                {
-                                    note = SDP.GetNote(request.Id, nt.Id);
-                                    Logger.Info($"По заявке {request.Id} получено примечание {note.Id}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.Error($"Ошибка получения примечания {nt.Id} по заявке {request.Id}!\r\n" + ex.Message);
-                                }
-                                if (IsLoginExists(note.Created_by.Email_id, null, out string notelogin))
-                                {
-                                    Logger.Info($"Автор примечания: {notelogin}");
-                                    note.AuthorLogin = notelogin;
-                                }
-                                else
-                                {
-                                    Logger.Error("Не удалось определить логин автора примечания!");
-                                    continue;
-                                }
-                                request.ParseDescription(note.Description ?? "", 1);
-                                Comment comment = new Comment()
-                                {
-                                    Author = note.AuthorLogin,
-                                    Body = HtmlToPlainText(note.Description ?? "")
-                                };
-                                foreach (SDP.Request.Attachment attachment in request.Attachments)
-                                    if (attachment.Type == 1)
-                                        comment.Body += $"[^{attachment.File_name}]";
-                                issue.AddCommentAsync(comment);
-                            }
-                        }
-                        if (request.Attachments.Count > 0)
-                        {
-                            Logger.Info($"Начата загрузка вложений по заявке {request.Id}.");
-                            foreach (var attachment in request.Attachments)
-                            {
-                                try
-                                {
-                                    SDP.DowloadFile(attachment.Content_url, attachment.File_name);
-                                    Logger.Info($"Загружен файл {attachment.File_name}.");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.Error($"Ошибка загрузки файла {attachment.File_name}!\r\n" + ex.Message);
-                                    continue;
-                                }
-                                try
-                                {
-                                    AddAttachmentsAsync(issue, attachment.File_name);
-                                    Logger.Info($"К задаче {issue.Key} добавлен файл {attachment.File_name}.");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.Error($"Ошибка добавления файла {attachment.File_name} к задача {issue.Key}!\r\n" + ex.Message);
-                                }
-                                File.Delete("files\\" + attachment.File_name);
-                            }
-                        }
-                        string result = SDP.CloseRequest(request.Id, out string status_code);
-                        if (status_code == "2000")
-                            Logger.Info(result);
-                        else
-                            Logger.Error(result);
-                    }
+                    continue;
                 }
             }
         }
+        private static void SyncRequest(string request_id)
+        {
+            int warning = 0;
+            SDP.Request request = new SDP.Request();
+            try
+            {
+                request = SDP.GetRequest(request_id);
+                if (request == null)
+                    throw new Exception("Request not found!");
+                else
+                    //Logger.Info("Data received for request:\r\n" + JsonConvert.SerializeObject(request, Formatting.Indented));
+                    Logger.Info($"Data received for request {request.Id}.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error receiving data for request {request_id} from SDP!\r\n" + ex.Message);
+                return;
+            }
+            if (IsLoginExists(request.Requester.Email_id, null, out string login))
+            {
+                Logger.Info($"Author: {login}");
+                request.AuthorLogin = login;
+            }
+            else
+            {
+                Logger.Error("Could not determine the author's login!");
+                return;
+            }
+            if (request.Technician != null)
+                if (IsLoginExists(request.Technician.Email_id, null, out login))
+                {
+                    request.SpecialistLogin = login;
+                }
+                else
+                {
+                    Logger.Error("Could not determine specialist login!");
+                    return;
+                }
+            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Count() > 0)
+            {
+                Logger.Error($"Jira already has issue {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} for request {request.Id}!");
+            }
+            else
+            {
+                request.ParseDescription(request.Description ?? "", 0);
+                var issue = jira.CreateIssue("ERP");
+                issue.Reporter = request.AuthorLogin;
+                if (request.Technician != null)
+                    issue.Assignee = request.SpecialistLogin;
+                issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
+                issue["Номер заявки SD"] = request.Id;
+                issue.Type = "10301"; //Task
+                issue.Summary = $"{request.Id} {request.Subject}";
+                if (request.Udf_fields.Udf_pick_3901 == null)
+                {
+                    Logger.Error("Field \"Direction\" is not filled!");
+                    return;
+                }
+                else
+                    issue["Направление"] = request.Udf_fields.Udf_pick_3901;
+                if (request.Subcategory == null)
+                {
+                    Logger.Error("Field \"Category/Subcategory\" is not filled!");
+                    return;
+                }
+                else
+                    issue["Категория"] = request.Subcategory.Name;
+                try
+                {
+                    issue.SaveChanges();
+                    Logger.Info($"Issue {issue.Key} created for request {request.Id}.");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Issue creation error in Jira for request {request.Id}!\r\n" + ex.Message);
+                    return;
+                }
+                if (request.Has_notes)
+                {
+                    try
+                    {
+                        SDP.GetNotes(request.Id);
+                        Logger.Info($"For request {request.Id} recieved {SDP.noteList.notes.Count} notes.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Error getting the list of notes for request {request.Id}!\r\n" + ex.Message);
+                        SDP.noteList.notes = null;
+                        warning++;
+                    }
+                    foreach (var nt in SDP.noteList.notes)
+                    {
+                        SDP.Note note = new SDP.Note();
+                        try
+                        {
+                            note = SDP.GetNote(request.Id, nt.Id);
+                            Logger.Info($"For request {request.Id} received note {note.Id}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warn($"Error getting a note {nt.Id} for request {request.Id}!\r\n" + ex.Message);
+                            warning++;
+                            continue;
+                        }
+                        if (IsLoginExists(note.Created_by.Email_id, null, out string notelogin))
+                        {
+                            Logger.Info($"Author of note: {notelogin}.");
+                            note.AuthorLogin = notelogin;
+                        }
+                        else
+                        {
+                            Logger.Warn("Could not determine the login of the author of the note!");
+                            warning++;
+                            continue;
+                        }
+                        request.ParseDescription(note.Description ?? "", 1);
+                        Comment comment = new Comment()
+                        {
+                            Author = note.AuthorLogin,
+                            Body = HtmlToPlainText(note.Description ?? "")
+                        };
+                        foreach (SDP.Request.Attachment attachment in request.Attachments)
+                            if (attachment.Type == 1)
+                                comment.Body += $"[^{attachment.File_name}]";
+                        issue.AddCommentAsync(comment);
+                    }
+                }
+                if (request.Attachments.Count > 0)
+                {
+                    Logger.Info($"Loading of attachments has started for request {request.Id}.");
+                    foreach (var attachment in request.Attachments)
+                    {
+                        try
+                        {
+                            SDP.DowloadFile(attachment.Content_url, attachment.File_name);
+                            Logger.Info($"File {attachment.File_name} apploaded.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warn($"File {attachment.File_name} appload error!\r\n" + ex.Message);
+                            warning++;
+                            continue;
+                        }
+                        try
+                        {
+                            AddAttachmentsAsync(issue, attachment.File_name);
+                            Logger.Info($"File {attachment.File_name} added to issue {issue.Key}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warn($"Error adding file {attachment.File_name} to issue {issue.Key}!\r\n" + ex.Message);
+                            warning++;
+                        }
+                        File.Delete("files\\" + attachment.File_name);
+                    }
+                }
+                string request_result = SDP.CloseRequest(request.Id, out string status_code);
+                if (status_code == "2000")
+                    Logger.Info(request_result);
+                else
+                {
+                    Logger.Warn(request_result);
+                    warning++;
+                }
+                Console.WriteLine($"Issue {issue.Key} created with {warning} warnings.");
+            }
+        }
+        private static void SyncRequest(string request_id, string username)
+        {
+            Logger.userName = username;
+            SyncRequest(request_id);
+        }
+
         private static void GetStats()
         {
+            GetSupportList();
             foreach (string supportName in supportList)
                 if (IsLoginExists(null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
                     var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
-                    using (BIDbContext context = new BIDbContext())
+                    using (LogDbContext context = new LogDbContext())
                     {
                         foreach (Issue jira_issue in jira_issues)
                         {
@@ -329,6 +363,7 @@ namespace SDP2Jira
         }
         private static void UpdateWeeklyPriority()
         {
+            GetSupportList();
             foreach (string supportName in supportList)
                 if (IsLoginExists(null, supportName, out string login))
                 {
@@ -349,6 +384,7 @@ namespace SDP2Jira
         }
         private static void UpdateStoryPoints()
         {
+            GetSupportList();
             foreach (string supportName in supportList)
                 if (IsLoginExists(null, supportName, out string login))
                 {
@@ -367,6 +403,7 @@ namespace SDP2Jira
         }
         private static void CleanSprint()
         {
+            GetSupportList();
             foreach (string supportName in supportList)
                 if (IsLoginExists(null, supportName, out string login))
                 {

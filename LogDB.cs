@@ -9,14 +9,14 @@ using NLog;
 
 namespace SDP2Jira
 {
-    public partial class BIDbContext : DbContext
+    public partial class LogDbContext : DbContext
     {
         public virtual DbSet<ISSUE> ISSUE { get; set; }
         public virtual DbSet<ISSUE_HISTORY> ISSUE_HISTORY { get; set; }
         public virtual DbSet<LOG> LOG { get; set; }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(ConfigurationManager.ConnectionStrings["BIDB"].ToString());
+            optionsBuilder.UseSqlServer(ConfigurationManager.ConnectionStrings["LOG_DB"].ToString());
         }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -93,6 +93,7 @@ namespace SDP2Jira
     public class DbLogger
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        public string userName = Environment.UserName;
         public void SaveLog(string type, string message)
         {
             string hostName = Dns.GetHostName();
@@ -101,12 +102,12 @@ namespace SDP2Jira
             foreach (IPAddress ipAddress in ipHostEntry.AddressList)
                 if (ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                     hostIP = ipAddress.ToString();
-            BIDbContext context = new BIDbContext();
+            LogDbContext context = new LogDbContext();
             var log = new LOG()
             {
                 LOGDATE = DateTime.Now,
                 LOGLEVEL = type,
-                USERNAME = Environment.UserName,
+                USERNAME = userName,
                 HOSTNAME = hostName,
                 HOSTIP = hostIP,
                 MESSAGE = message.Length > 4000 ? message.Substring(0, 4000) : message,
@@ -119,7 +120,7 @@ namespace SDP2Jira
             }
             catch (Exception ex)
             {
-                Logger.Error("Ошибка подключения к серверу логгирования!\r\n" + ex.Message);
+                Logger.Error("Connection error to logging server!\r\n" + ex.Message);
                 Console.ReadKey();
                 Environment.Exit(0);
             }
@@ -129,11 +130,15 @@ namespace SDP2Jira
             SaveLog("INFO", message);
             Logger.Info(message);
         }
-
         public void Error(string message)
         {
             SaveLog("ERROR", message);
             Logger.Error(message);
+        }
+        public void Warn(string message)
+        {
+            SaveLog("WARN", message);
+            Logger.Warn(message);
         }
     }
 }
