@@ -66,8 +66,7 @@ namespace SDP2Jira
                 jira = Jira.CreateRestClient(ConfigurationManager.AppSettings["JIRA_SERVER"],
                                              ConfigurationManager.AppSettings["JIRA_LOGIN"],
                                              ConfigurationManager.AppSettings["JIRA_PASS"]);
-                var project = jira.Projects.GetProjectAsync("ERP").Result;
-                Logger.Info($"Connected to Jira {ConfigurationManager.AppSettings["JIRA_SERVER"]} project {project.Name}.");
+                Logger.Info($"Connected to Jira {ConfigurationManager.AppSettings["JIRA_SERVER"]}");
             }
             catch (Exception ex)
             {
@@ -79,10 +78,13 @@ namespace SDP2Jira
             else
             {
                 if (args[0] == "-r" && args[1]?.Length > 0)
-                    if (args.Length ==4 && args[2] == "-u" && args[3]?.Length > 0)
-                        SyncRequest(args[1], args[3]);
+                    if (args.Length == 4 && args[2] == "-u" && args[3]?.Length > 0)
+                        SyncRequest(args[1], "ERP", args[3]);
                     else
-                        SyncRequest(args[1]);
+                        if (args.Length == 6 && args[4] == "-proj" && args[5]?.Length > 0)
+                            SyncRequest(args[1], args[5], args[3]);
+                        else
+                            SyncRequest(args[1], "ERP");
                 if (args[0] == "-stats")
                     GetStats();
                 if (args[0] == "-week")
@@ -117,7 +119,7 @@ namespace SDP2Jira
                     SDP.GetRequestList(supportName);
                     Logger.Info($"По специалисту {supportName} загружено {SDP.requestList.requests.Count} заявок.");
                     foreach (var req in SDP.requestList.requests)
-                        SyncRequest(req.Id);
+                        SyncRequest(req.Id, "ERP");
                 }
                 catch (Exception ex)
                 {
@@ -126,7 +128,7 @@ namespace SDP2Jira
                 }
             }
         }
-        private static void SyncRequest(string request_id)
+        private static void SyncRequest(string request_id, string project)
         {
             int warning = 0;
             SDP.Request request = new SDP.Request();
@@ -171,7 +173,7 @@ namespace SDP2Jira
             else
             {
                 request.ParseDescription(request.Description ?? "", 0);
-                var issue = jira.CreateIssue("ERP");
+                var issue = jira.CreateIssue(project);
                 issue.Reporter = request.AuthorLogin;
                 if (request.Technician != null)
                     issue.Assignee = request.SpecialistLogin;
@@ -179,20 +181,23 @@ namespace SDP2Jira
                 issue["Номер заявки SD"] = request.Id;
                 issue.Type = "10301"; //Task
                 issue.Summary = $"{request.Id} {request.Subject}";
-                if (request.Udf_fields.Udf_pick_3901 == null)
+                if (project == "ERP")
                 {
-                    Logger.Error("Field \"Direction\" is not filled!");
-                    return;
+                    if (request.Udf_fields.Udf_pick_3901 == null)
+                    {
+                        Logger.Error("Field \"Direction\" is not filled!");
+                        return;
+                    }
+                    else
+                        issue["Направление"] = request.Udf_fields.Udf_pick_3901;
+                    if (request.Subcategory == null)
+                    {
+                        Logger.Error("Field \"Category/Subcategory\" is not filled!");
+                        return;
+                    }
+                    else
+                        issue["Категория"] = request.Subcategory.Name;
                 }
-                else
-                    issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                if (request.Subcategory == null)
-                {
-                    Logger.Error("Field \"Category/Subcategory\" is not filled!");
-                    return;
-                }
-                else
-                    issue["Категория"] = request.Subcategory.Name;
                 try
                 {
                     issue.SaveChanges();
@@ -293,10 +298,10 @@ namespace SDP2Jira
                 Console.WriteLine($"Issue {issue.Key} created with {warning} warnings.");
             }
         }
-        private static void SyncRequest(string request_id, string username)
+        private static void SyncRequest(string request_id, string project, string username)
         {
             Logger.userName = username;
-            SyncRequest(request_id);
+            SyncRequest(request_id, project);
         }
 
         private static void GetStats()
