@@ -180,7 +180,8 @@ namespace SDP2Jira
                 issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
                 issue["Номер заявки SD"] = request.Id;
                 issue.Type = "10301"; //Task
-                issue.Summary = $"{request.Id} {request.Subject}";
+                string summary = $"{request.Id} {request.Subject}";
+                issue.Summary = summary.Length > 255 ? summary.Substring(0, 255) : summary;
                 if (project == "ERP")
                 {
                     if (request.Udf_fields.Udf_pick_3901 == null)
@@ -190,13 +191,13 @@ namespace SDP2Jira
                     }
                     else
                         issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                    if (request.Subcategory == null)
+                    if (request.Item == null)
                     {
-                        Logger.Error("Field \"Category/Subcategory\" is not filled!");
+                        Logger.Error("Field \"Category/Subcategory/Position\" is not filled!");
                         return;
                     }
                     else
-                        issue["Категория"] = request.Subcategory.Name;
+                        issue["Категория"] = request.Item.Name;
                 }
                 try
                 {
@@ -303,68 +304,74 @@ namespace SDP2Jira
             Logger.userName = username;
             SyncRequest(request_id, project);
         }
-
         private static void GetStats()
         {
             GetSupportList();
+            jira.Issues.MaxIssuesPerRequest = 1000;
+            List<Issue> jira_issues;
             foreach (string supportName in supportList)
                 if (IsLoginExists(null, supportName, out string login))
                 {
-                    jira.Issues.MaxIssuesPerRequest = 1000;
-                    var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
-                    using (LogDbContext context = new LogDbContext())
-                    {
-                        foreach (Issue jira_issue in jira_issues)
-                        {
-                            ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
-                            if (issue == null)
-                            {
-                                issue = new ISSUE
-                                {
-                                    JIRAIDENTIFIER = jira_issue.JiraIdentifier
-                                };
-                                context.ISSUE.Add(issue);
-                            }
-                            if (jira_issue.Updated != issue.UPDATED)
-                            {
-                                issue.KEY = jira_issue.Key.Value;
-                                issue.PRIORITY = jira_issue.Priority.Name;
-                                issue.CREATED = jira_issue.Created;
-                                issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
-                                issue.ASSIGNEEUSER = jira_issue.AssigneeUser.DisplayName;
-                                issue.SUMMARY = jira_issue.Summary;
-                                issue.STATUSNAME = jira_issue.Status.Name;
-                                issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToInt32(jira_issue["Story Points"].Value);
-                                issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
-                                issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
-                                issue.UPDATED = jira_issue.Updated;
-
-                                var changeLog = jira_issue.GetChangeLogsAsync().Result;
-                                foreach (var history in changeLog)
-                                    foreach (var item in history.Items)
-                                        if (item.FieldName == "status")
-                                        {
-                                            ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
-                                            if (issue_History == null)
-                                            {
-                                                issue_History = new ISSUE_HISTORY
-                                                {
-                                                    ID = history.Id
-                                                };
-                                                context.ISSUE_HISTORY.Add(issue_History);
-                                            }
-                                            issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
-                                            issue_History.CREATEDDATE = history.CreatedDate;
-                                            issue_History.FIELDNAME = item.FieldName;
-                                            issue_History.FROMVALUE = item.FromValue;
-                                            issue_History.TOVALUE = item.ToValue;
-                                        }
-                            }
-                        }
-                        context.SaveChanges();
-                    }
+                    
+                    jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
+                    GetStat(jira_issues);
                     Logger.Info($"Загружено {jira_issues.Count} задач по специалисту {supportName}.");
                 }
+            jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == null && x.Project == "ERP").ToList();
+            GetStat(jira_issues);
+            Logger.Info($"Загружено {jira_issues.Count} задач без специалиста.");
+        }
+        private static void GetStat(List<Issue> jira_issues)
+        {
+            LogDbContext context = new LogDbContext();
+            foreach (Issue jira_issue in jira_issues)
+            {
+                ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
+                if (issue == null)
+                {
+                    issue = new ISSUE
+                    {
+                        JIRAIDENTIFIER = jira_issue.JiraIdentifier
+                    };
+                    context.ISSUE.Add(issue);
+                }
+                if (jira_issue.Updated != issue.UPDATED)
+                {
+                    issue.KEY = jira_issue.Key.Value;
+                    issue.PRIORITY = jira_issue.Priority.Name;
+                    issue.CREATED = jira_issue.Created;
+                    issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
+                    issue.ASSIGNEEUSER = jira_issue.AssigneeUser?.DisplayName;
+                    issue.SUMMARY = jira_issue.Summary;
+                    issue.STATUSNAME = jira_issue.Status.Name;
+                    issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToInt32(jira_issue["Story Points"].Value);
+                    issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
+                    issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
+                    issue.UPDATED = jira_issue.Updated;
+
+                    var changeLog = jira_issue.GetChangeLogsAsync().Result;
+                    foreach (var history in changeLog)
+                        foreach (var item in history.Items)
+                            if (item.FieldName == "status")
+                            {
+                                ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                if (issue_History == null)
+                                {
+                                    issue_History = new ISSUE_HISTORY
+                                    {
+                                        ID = history.Id
+                                    };
+                                    context.ISSUE_HISTORY.Add(issue_History);
+                                }
+                                issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
+                                issue_History.CREATEDDATE = history.CreatedDate;
+                                issue_History.FIELDNAME = item.FieldName;
+                                issue_History.FROMVALUE = item.FromValue;
+                                issue_History.TOVALUE = item.ToValue;
+                            }
+                }
+            }
+            context.SaveChanges();
         }
         private static void UpdateWeeklyPriority()
         {
@@ -416,8 +423,7 @@ namespace SDP2Jira
                     var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
                     foreach (Issue jira_issue in jira_issues.Where(x => x.Status.StatusCategory.Key != "done"))
                     {
-                        if (jira_issue["Sprint"] != null && !jira_issue["Sprint"].Value.Contains("Galaxy") &&
-                            jira_issue.Key != "PIM-210" && jira_issue.Key != "PIM-219" && jira_issue.Key != "PIM-221")
+                        if (jira_issue["Sprint"] != null && !jira_issue["Sprint"].Value.Contains("Galaxy"))
                         {
                             jira_issue["Sprint"] = null;
                             jira_issue.SaveChanges();

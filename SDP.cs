@@ -28,7 +28,7 @@ namespace SDP2Jira
             public Sub Technician { get; set; }
             public string Subject { get; set; }
             public string Description { get; set; }
-            public Sub Subcategory { get; set; }
+            public Sub Item { get; set; }
             public Sub Udf_fields { get; set; }
             public Sub Status { get; set; }
 

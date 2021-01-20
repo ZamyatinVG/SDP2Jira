@@ -1,6 +1,6 @@
 USE [master]
 GO
-/****** Object:  Database [Jira]    Script Date: 23.10.2020 12:13:51 ******/
+/****** Object:  Database [Jira]    Script Date: 20.01.2021 12:02:00 ******/
 CREATE DATABASE [Jira] ON  PRIMARY 
 ( NAME = N'Jira', FILENAME = N'E:\MSSQL.BI\DATA\Jira.mdf' , SIZE = 1048576KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
  LOG ON 
@@ -57,7 +57,7 @@ ALTER DATABASE [Jira] SET READ_COMMITTED_SNAPSHOT OFF
 GO
 ALTER DATABASE [Jira] SET HONOR_BROKER_PRIORITY OFF 
 GO
-ALTER DATABASE [Jira] SET RECOVERY FULL 
+ALTER DATABASE [Jira] SET RECOVERY SIMPLE 
 GO
 ALTER DATABASE [Jira] SET  MULTI_USER 
 GO
@@ -69,15 +69,15 @@ EXEC sys.sp_db_vardecimal_storage_format N'Jira', N'ON'
 GO
 USE [Jira]
 GO
-/****** Object:  User [NT SERVICE\HealthService]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  User [NT SERVICE\HealthService]    Script Date: 20.01.2021 12:02:00 ******/
 CREATE USER [NT SERVICE\HealthService] FOR LOGIN [NT SERVICE\HealthService]
 GO
-/****** Object:  User [jirabot]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  User [jirabot]    Script Date: 20.01.2021 12:02:00 ******/
 CREATE USER [jirabot] FOR LOGIN [jirabot] WITH DEFAULT_SCHEMA=[dbo]
 GO
 sys.sp_addrolemember @rolename = N'db_owner', @membername = N'jirabot'
 GO
-/****** Object:  Table [dbo].[ISSUE]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  Table [dbo].[ISSUE]    Script Date: 20.01.2021 12:02:00 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -101,7 +101,7 @@ CREATE TABLE [dbo].[ISSUE](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 20.01.2021 12:02:00 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -119,7 +119,7 @@ CREATE TABLE [dbo].[ISSUE_HISTORY](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[LOG]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  Table [dbo].[LOG]    Script Date: 20.01.2021 12:02:00 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -139,7 +139,7 @@ CREATE TABLE [dbo].[LOG](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 20.01.2021 12:02:00 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -150,12 +150,11 @@ CREATE TABLE [dbo].[SERVICEDESK_WO](
 	[opencount] [int] NULL
 ) ON [PRIMARY]
 GO
-/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 23.10.2020 12:13:52 ******/
+/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 20.01.2021 12:02:00 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-
 
 
 CREATE view [dbo].[ISSUE_STATS] as
@@ -239,6 +238,12 @@ select '''' + convert(nvarchar, t.fday) fday,
 	group by t.fday, t.assigneeuser, t.statusname, t.category, t.direction, wo.opencount
 	--option (maxrecursion 10000)
 
+GO
+ALTER TABLE [dbo].[ISSUE_HISTORY]  WITH CHECK ADD  CONSTRAINT [FK_ISSUE_HISTORY_ISSUE] FOREIGN KEY([JIRAIDENTIFIER])
+REFERENCES [dbo].[ISSUE] ([JIRAIDENTIFIER])
+ON DELETE CASCADE
+GO
+ALTER TABLE [dbo].[ISSUE_HISTORY] CHECK CONSTRAINT [FK_ISSUE_HISTORY_ISSUE]
 GO
 USE [master]
 GO
