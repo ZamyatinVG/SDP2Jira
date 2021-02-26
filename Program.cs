@@ -13,7 +13,8 @@ namespace SDP2Jira
     {
         private static Jira jira;
         private static readonly DbLogger Logger = new DbLogger();
-
+        private static string LDAP_ASKONA = "LDAP://DC=hcaskona,DC=com";
+        private static string LDAP_PMT = "LDAP://DC=gw-ad,DC=local";
         private static List<string> supportList;
         private static string HtmlToPlainText(string html)
         {
@@ -35,12 +36,13 @@ namespace SDP2Jira
             text = stripFormattingRegex.Replace(text, string.Empty);
             return text;
         }
-        private static bool IsLoginExists(string mail, string displayname, out string login)
+        private static bool IsLoginExists(string ldap, string mail, string displayname, out string login)
         {
             login = "";
-            DirectorySearcher ds = new DirectorySearcher()
+            DirectoryEntry de = new DirectoryEntry(ldap);
+            DirectorySearcher ds = new DirectorySearcher(de)
             {
-                Filter = mail == null ? $"(displayname={displayname})" : $"(mail={mail})",
+                Filter = mail == null || mail == "" ? $"(displayname={displayname})" : $"(mail={mail})",
                 PropertiesToLoad = { "samaccountname" }
             };
             SearchResult sr = ds.FindOne();
@@ -48,8 +50,16 @@ namespace SDP2Jira
                 return false;
             else
             {
-                login = sr.Properties["samaccountname"][0].ToString();
-                return true;
+                if (sr.Properties["samaccountname"].Count == 0)
+                    if (ldap == LDAP_ASKONA)
+                        return IsLoginExists(LDAP_PMT, mail, displayname, out login);
+                    else
+                        return false;
+                else
+                {
+                    login = sr.Properties["samaccountname"][0].ToString();
+                    return true;
+                }
             }
         }
         private static async void AddAttachmentsAsync(Issue issue, string path)
@@ -92,7 +102,6 @@ namespace SDP2Jira
                 if (args[0] == "-sprint")
                     CleanSprint();
             }
-            //UpdateStoryPoints();
             Logger.Info("Program closed.");
         }
         private static void GetSupportList()
@@ -146,7 +155,7 @@ namespace SDP2Jira
                 Logger.Error($"Error receiving data for request {request_id} from SDP!\r\n" + ex.Message);
                 return;
             }
-            if (IsLoginExists(request.Requester.Email_id, null, out string login))
+            if (IsLoginExists(LDAP_ASKONA, request.Requester.Email_id, null, out string login))
             {
                 Logger.Info($"Author: {login}");
                 request.AuthorLogin = login;
@@ -157,7 +166,7 @@ namespace SDP2Jira
                 return;
             }
             if (request.Technician != null)
-                if (IsLoginExists(request.Technician.Email_id, null, out login))
+                if (IsLoginExists(LDAP_ASKONA, request.Technician.Email_id, null, out login))
                 {
                     request.SpecialistLogin = login;
                 }
@@ -236,7 +245,7 @@ namespace SDP2Jira
                             warning++;
                             continue;
                         }
-                        if (IsLoginExists(note.Created_by.Email_id, null, out string notelogin))
+                        if (IsLoginExists(LDAP_ASKONA, note.Created_by.Email_id, note.Created_by.Name, out string notelogin))
                         {
                             Logger.Info($"Author of note: {notelogin}.");
                             note.AuthorLogin = notelogin;
@@ -310,7 +319,7 @@ namespace SDP2Jira
             jira.Issues.MaxIssuesPerRequest = 1000;
             List<Issue> jira_issues;
             foreach (string supportName in supportList)
-                if (IsLoginExists(null, supportName, out string login))
+                if (IsLoginExists(LDAP_ASKONA, null, supportName, out string login))
                 {
                     
                     jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
@@ -377,7 +386,7 @@ namespace SDP2Jira
         {
             GetSupportList();
             foreach (string supportName in supportList)
-                if (IsLoginExists(null, supportName, out string login))
+                if (IsLoginExists(LDAP_ASKONA, null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
                     var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
@@ -398,7 +407,7 @@ namespace SDP2Jira
         {
             GetSupportList();
             foreach (string supportName in supportList)
-                if (IsLoginExists(null, supportName, out string login))
+                if (IsLoginExists(LDAP_ASKONA, null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
                     var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
@@ -417,7 +426,7 @@ namespace SDP2Jira
         {
             GetSupportList();
             foreach (string supportName in supportList)
-                if (IsLoginExists(null, supportName, out string login))
+                if (IsLoginExists(LDAP_ASKONA, null, supportName, out string login))
                 {
                     jira.Issues.MaxIssuesPerRequest = 1000;
                     var jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
