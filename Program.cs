@@ -188,7 +188,6 @@ namespace SDP2Jira
                     issue.Assignee = request.SpecialistLogin;
                 issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
                 issue["Номер заявки SD"] = request.Id;
-                issue.Type = "10301"; //Task
                 string summary = $"{request.Id} {request.Subject}";
                 issue.Summary = summary.Length > 255 ? summary.Substring(0, 255) : summary;
                 if (project == "ERP")
@@ -206,7 +205,19 @@ namespace SDP2Jira
                         return;
                     }
                     else
+                    {
                         issue["Категория"] = request.Item.Name;
+                        if (issue["Категория"] == "Доработка нового функционала" ||
+                            issue["Категория"] == "Развитие собственной доработки" ||
+                            issue["Категория"] == "Развитие стандартного функционала")
+                            issue.Type = "10100"; //Improvement
+                        else
+                            issue.Type = "10206"; //Analysis
+                    }
+                }
+                else
+                {
+                    issue.Type = "10301"; //Task
                 }
                 try
                 {
