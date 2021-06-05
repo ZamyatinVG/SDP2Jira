@@ -76,6 +76,7 @@ namespace SDP2Jira
                 jira = Jira.CreateRestClient(ConfigurationManager.AppSettings["JIRA_SERVER"],
                                              ConfigurationManager.AppSettings["JIRA_LOGIN"],
                                              ConfigurationManager.AppSettings["JIRA_PASS"]);
+                var project = jira.Projects.GetProjectAsync("ERP").Result;
                 Logger.Info($"Connected to Jira {ConfigurationManager.AppSettings["JIRA_SERVER"]}");
             }
             catch (Exception ex)
@@ -92,13 +93,11 @@ namespace SDP2Jira
                         SyncRequest(args[1], "ERP", args[3]);
                     else
                         if (args.Length == 6 && args[4] == "-proj" && args[5]?.Length > 0)
-                        SyncRequest(args[1], args[5], args[3]);
-                    else
-                        SyncRequest(args[1], "ERP");
+                            SyncRequest(args[1], args[5], args[3]);
+                        else
+                            SyncRequest(args[1], "ERP");
                 if (args[0] == "-stats")
                     GetStats();
-                if (args[0] == "-prior")
-                    UpdatePriority();
             }
             Logger.Info("Program closed.");
         }
@@ -390,28 +389,6 @@ namespace SDP2Jira
                 }
             }
             context.SaveChanges();
-        }
-        private static void UpdatePriority()
-        {
-            jira.Issues.MaxIssuesPerRequest = 1000;
-            var jira_issues = jira.Issues.Queryable.Where(x => x.Project == "ERP" &&
-                                                               (x.Status == "10406" || x.Status == "10511" || x.Status == "10200" || x.Status == "10703" || x.Status == "10700" || x.Status == "10701" || x.Status == "10203") &&
-                                                               (x.Type == "10206" || x.Type == "10301" || x.Type == "10303" || x.Type == "10100" || x.Type == "10003") &&
-                                                               x.Priority != "4" && x.Priority != "5" &&
-                                                               x.Updated < DateTime.Now.AddDays(-30)).ToList();
-            foreach (Issue jira_issue in jira_issues)
-            {
-                if (jira_issue.Priority.Id == "3")
-                    jira_issue.Priority = "4";
-                if (jira_issue.Priority.Id == "2")
-                    jira_issue.Priority = "3";
-                if (jira_issue.Priority.Id == "1")
-                    jira_issue.Priority = "2";
-                if (jira_issue.Priority.Id == "10000")
-                    jira_issue.Priority = "1";
-                jira_issue.SaveChanges();
-                Logger.Info($"У задачи {jira_issue.Key} обновлен приоритет на {jira_issue.Priority}.");
-            }
         }
     }
 }
