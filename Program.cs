@@ -365,6 +365,7 @@ namespace SDP2Jira
                     issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
                     issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
                     issue.UPDATED = jira_issue.Updated;
+                    issue.TYPE = jira_issue.Type.Name;
 
                     var changeLog = jira_issue.GetChangeLogsAsync().Result;
                     foreach (var history in changeLog)

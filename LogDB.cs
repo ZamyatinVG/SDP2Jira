@@ -53,6 +53,8 @@ namespace SDP2Jira
         [StringLength(255)]
         public string DIRECTION { get; set; }
         public DateTime? UPDATED { get; set; }
+        [StringLength(255)]
+        public string TYPE { get; set; }
     }
 
     [Table("ISSUE_HISTORY")]
