@@ -15,7 +15,6 @@ namespace SDP2Jira
         private static readonly DbLogger Logger = new DbLogger();
         private static string LDAP_ASKONA = "LDAP://DC=hcaskona,DC=com";
         private static string LDAP_PMT = "LDAP://DC=gw-ad,DC=local";
-        private static List<string> supportList;
         private static string HtmlToPlainText(string html)
         {
             //https://stackoverflow.com/questions/286813/how-do-you-convert-html-to-plain-text
@@ -84,55 +83,17 @@ namespace SDP2Jira
                 Logger.Error("Connection error to Jira!\r\n" + ex.Message);
                 return;
             }
-            if (args.Length == 0)
-                SyncRequestsBySpecialists();
-            else
-            {
-                if (args[0] == "-r" && args[1]?.Length > 0)
-                    if (args.Length == 4 && args[2] == "-u" && args[3]?.Length > 0)
-                        SyncRequest(args[1], "ERP", args[3]);
+            if (args[0] == "-r" && args[1]?.Length > 0)
+                if (args.Length == 4 && args[2] == "-u" && args[3]?.Length > 0)
+                    SyncRequest(args[1], "ERP", args[3]);
+                else
+                    if (args.Length == 6 && args[4] == "-proj" && args[5]?.Length > 0)
+                        SyncRequest(args[1], args[5], args[3]);
                     else
-                        if (args.Length == 6 && args[4] == "-proj" && args[5]?.Length > 0)
-                            SyncRequest(args[1], args[5], args[3]);
-                        else
-                            SyncRequest(args[1], "ERP");
-                if (args[0] == "-stats")
-                    GetStats();
-            }
+                        SyncRequest(args[1], "ERP");
+            if (args[0] == "-stats")
+                GetStats();
             Logger.Info("Program closed.");
-        }
-        private static void GetSupportList()
-        {
-            try
-            {
-                string[] supportListArray = ConfigurationManager.AppSettings["SUPPORT_LIST"].Split(';');
-                supportList = new List<string>(supportListArray);
-                Logger.Info("Загружен список специалистов.");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Ошибка загрузки списка специалистов!\r\n" + ex.Message);
-                return;
-            }
-        }
-        private static void SyncRequestsBySpecialists()
-        {
-            GetSupportList();
-            foreach (string supportName in supportList)
-            {
-                try
-                {
-                    SDP.GetRequestList(supportName);
-                    Logger.Info($"По специалисту {supportName} загружено {SDP.requestList.requests.Count} заявок.");
-                    foreach (var req in SDP.requestList.requests)
-                        SyncRequest(req.Id, "ERP");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Ошибка получения списка заявок из SDP по специалисту {supportName}!\r\n" + ex.Message);
-                    continue;
-                }
-            }
         }
         private static void SyncRequest(string request_id, string project)
         {
@@ -313,7 +274,7 @@ namespace SDP2Jira
                     Logger.Warn(request_result);
                     warning++;
                 }
-                Console.WriteLine($"Issue {issue.Key} created with {warning} warnings.");
+                Logger.Info($"Issue {issue.Key} created with {warning} warnings.");
             }
         }
         private static void SyncRequest(string request_id, string project, string username)
@@ -323,70 +284,95 @@ namespace SDP2Jira
         }
         private static void GetStats()
         {
-            GetSupportList();
-            jira.Issues.MaxIssuesPerRequest = 1000;
-            List<Issue> jira_issues;
-            foreach (string supportName in supportList)
-                if (IsLoginExists(LDAP_ASKONA, null, supportName, out string login))
+            int stop_count = 0;
+            jira.Issues.MaxIssuesPerRequest = 100;
+            List<Issue> jira_issues = new List<Issue>();
+            string[] ji = new string[jira.Issues.MaxIssuesPerRequest];
+            for (int j = 0; j < 1000; j++)
+            {
+                for (int i = 0; i < jira.Issues.MaxIssuesPerRequest; i++)
+                    ji[i] = (10000 + jira.Issues.MaxIssuesPerRequest * j + i).ToString();
+                try
                 {
-                    
-                    jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == new LiteralMatch(login)).ToList();
-                    GetStat(jira_issues);
-                    Logger.Info($"Загружено {jira_issues.Count} задач по специалисту {supportName}.");
+                    jira_issues.Clear();
+                    ICollection<Issue> issues = jira.Issues.GetIssuesAsync(ji).Result.Values;
+                    jira_issues.AddRange(issues);
+                    Logger.Info($"Загружены {j} x {jira.Issues.MaxIssuesPerRequest} задач");
                 }
-            jira_issues = jira.Issues.Queryable.Where(x => x.Assignee == null && x.Project == "ERP").ToList();
-            GetStat(jira_issues);
-            Logger.Info($"Загружено {jira_issues.Count} задач без специалиста.");
+                catch (Exception ex)
+                {
+                    Logger.Error($"Ошибка загрузки {j} x {jira.Issues.MaxIssuesPerRequest} задач!\r\n" + ex.Message);
+                }
+                if (jira_issues.Count == 0)
+                    stop_count++;
+                else
+                    stop_count = 0;
+                if (stop_count == 10)
+                {
+                    Logger.Info($"Выгрузка статистики по задачам завершена");
+                    return;
+                }
+                jira_issues = jira_issues.Where(x => x.Updated.Value.CompareTo(DateTime.Now.AddDays(-7)) > 0).ToList();
+                GetStat(jira_issues);
+                Logger.Info($"Обработаны {j} x {jira.Issues.MaxIssuesPerRequest} задач");
+            }
         }
         private static void GetStat(List<Issue> jira_issues)
         {
             LogDbContext context = new LogDbContext();
             foreach (Issue jira_issue in jira_issues)
             {
-                ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
-                if (issue == null)
+                try
                 {
-                    issue = new ISSUE
+                    ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
+                    if (issue == null)
                     {
-                        JIRAIDENTIFIER = jira_issue.JiraIdentifier
-                    };
-                    context.ISSUE.Add(issue);
-                }
-                if (jira_issue.Updated != issue.UPDATED)
-                {
-                    issue.KEY = jira_issue.Key.Value;
-                    issue.PRIORITY = jira_issue.Priority.Name;
-                    issue.CREATED = jira_issue.Created;
-                    issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
-                    issue.ASSIGNEEUSER = jira_issue.AssigneeUser?.DisplayName;
-                    issue.SUMMARY = jira_issue.Summary;
-                    issue.STATUSNAME = jira_issue.Status.Name;
-                    issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToInt32(jira_issue["Story Points"].Value);
-                    issue.CATEGORY = jira_issue["Категория"]?.Value.ToString();
-                    issue.DIRECTION = jira_issue["Направление"]?.Value.ToString();
-                    issue.UPDATED = jira_issue.Updated;
-                    issue.TYPE = jira_issue.Type.Name;
+                        issue = new ISSUE
+                        {
+                            JIRAIDENTIFIER = jira_issue.JiraIdentifier
+                        };
+                        context.ISSUE.Add(issue);
+                    }
+                    if (jira_issue.Updated != issue.UPDATED)
+                    {
+                        issue.KEY = jira_issue.Key.Value;
+                        issue.PRIORITY = jira_issue.Priority?.Name;
+                        issue.CREATED = jira_issue.Created;
+                        issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
+                        issue.ASSIGNEEUSER = jira_issue.AssigneeUser?.DisplayName;
+                        issue.SUMMARY = jira_issue.Summary;
+                        issue.STATUSNAME = jira_issue.Status.Name;
+                        issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToDecimal(jira_issue["Story Points"].Value.Replace('.', ','));
+                        issue.CATEGORY = jira_issue["Категория"]?.Value;
+                        issue.DIRECTION = jira_issue["Направление"]?.Value;
+                        issue.UPDATED = jira_issue.Updated;
+                        issue.TYPE = jira_issue.Type.Name;
 
-                    var changeLog = jira_issue.GetChangeLogsAsync().Result;
-                    foreach (var history in changeLog)
-                        foreach (var item in history.Items)
-                            if (item.FieldName == "status")
-                            {
-                                ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
-                                if (issue_History == null)
+                        var changeLog = jira_issue.GetChangeLogsAsync().Result;
+                        foreach (var history in changeLog)
+                            foreach (var item in history.Items)
+                                if (item.FieldName == "status")
                                 {
-                                    issue_History = new ISSUE_HISTORY
+                                    ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                    if (issue_History == null)
                                     {
-                                        ID = history.Id
-                                    };
-                                    context.ISSUE_HISTORY.Add(issue_History);
+                                        issue_History = new ISSUE_HISTORY
+                                        {
+                                            ID = history.Id
+                                        };
+                                        context.ISSUE_HISTORY.Add(issue_History);
+                                    }
+                                    issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
+                                    issue_History.CREATEDDATE = history.CreatedDate;
+                                    issue_History.FIELDNAME = item.FieldName;
+                                    issue_History.FROMVALUE = item.FromValue;
+                                    issue_History.TOVALUE = item.ToValue;
                                 }
-                                issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
-                                issue_History.CREATEDDATE = history.CreatedDate;
-                                issue_History.FIELDNAME = item.FieldName;
-                                issue_History.FROMVALUE = item.FromValue;
-                                issue_History.TOVALUE = item.ToValue;
-                            }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Ошибка обработки задачи {jira_issue.Key}!\r\n" + ex.Message);
                 }
             }
             context.SaveChanges();
