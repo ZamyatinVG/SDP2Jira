@@ -351,20 +351,20 @@ namespace SDP2Jira
                         var changeLog = jira_issue.GetChangeLogsAsync().Result;
                         foreach (var history in changeLog)
                             foreach (var item in history.Items)
-                                if (item.FieldName == "status")
+                                if (item.FieldName == "status"/* || item.FieldName == "issuetype"*/)
                                 {
-                                    ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id).FirstOrDefault();
+                                    ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id && x.FIELDNAME == item.FieldName).FirstOrDefault();
                                     if (issue_History == null)
                                     {
                                         issue_History = new ISSUE_HISTORY
                                         {
-                                            ID = history.Id
+                                            ID = history.Id,
+                                            FIELDNAME = item.FieldName
                                         };
                                         context.ISSUE_HISTORY.Add(issue_History);
                                     }
                                     issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
                                     issue_History.CREATEDDATE = history.CreatedDate;
-                                    issue_History.FIELDNAME = item.FieldName;
                                     issue_History.FROMVALUE = item.FromValue;
                                     issue_History.TOVALUE = item.ToValue;
                                 }

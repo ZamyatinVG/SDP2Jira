@@ -23,7 +23,7 @@ namespace SDP2Jira
             modelBuilder.Entity<ISSUE>()
                 .HasKey(x => x.JIRAIDENTIFIER);
             modelBuilder.Entity<ISSUE_HISTORY>()
-                .HasKey(x => x.ID);
+                .HasKey(x => new { x.ID, x.FIELDNAME });
             modelBuilder.Entity<LOG>()
                 .HasKey(x => x.ID);
         }

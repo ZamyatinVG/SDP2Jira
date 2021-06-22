@@ -1,10 +1,10 @@
 USE [master]
 GO
-/****** Object:  Database [Jira]    Script Date: 10.06.2021 13:01:46 ******/
+/****** Object:  Database [Jira]    Script Date: 22.06.2021 8:50:03 ******/
 CREATE DATABASE [Jira] ON  PRIMARY 
 ( NAME = N'Jira', FILENAME = N'E:\MSSQL.BI\DATA\Jira.mdf' , SIZE = 1048576KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
  LOG ON 
-( NAME = N'Jira_log', FILENAME = N'E:\MSSQL.BI\DATA\Jira_log.ldf' , SIZE = 131072KB , MAXSIZE = 2048GB , FILEGROWTH = 10%)
+( NAME = N'Jira_log', FILENAME = N'E:\MSSQL.BI\DATA\Jira_log.ldf' , SIZE = 158656KB , MAXSIZE = 2048GB , FILEGROWTH = 10%)
 GO
 ALTER DATABASE [Jira] SET COMPATIBILITY_LEVEL = 100
 GO
@@ -69,15 +69,15 @@ EXEC sys.sp_db_vardecimal_storage_format N'Jira', N'ON'
 GO
 USE [Jira]
 GO
-/****** Object:  User [NT SERVICE\HealthService]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  User [NT SERVICE\HealthService]    Script Date: 22.06.2021 8:50:03 ******/
 CREATE USER [NT SERVICE\HealthService] FOR LOGIN [NT SERVICE\HealthService]
 GO
-/****** Object:  User [jirabot]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  User [jirabot]    Script Date: 22.06.2021 8:50:03 ******/
 CREATE USER [jirabot] FOR LOGIN [jirabot] WITH DEFAULT_SCHEMA=[dbo]
 GO
 sys.sp_addrolemember @rolename = N'db_owner', @membername = N'jirabot'
 GO
-/****** Object:  Table [dbo].[ISSUE]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  Table [dbo].[ISSUE]    Script Date: 22.06.2021 8:50:03 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -91,7 +91,7 @@ CREATE TABLE [dbo].[ISSUE](
 	[ASSIGNEEUSER] [nvarchar](255) NULL,
 	[SUMMARY] [nvarchar](255) NULL,
 	[STATUSNAME] [nvarchar](255) NULL,
-	[STORYPOINTS] [int] NULL,
+	[STORYPOINTS] [decimal](10, 2) NULL,
 	[CATEGORY] [nvarchar](255) NULL,
 	[DIRECTION] [nvarchar](255) NULL,
 	[UPDATED] [datetime] NULL,
@@ -102,7 +102,7 @@ CREATE TABLE [dbo].[ISSUE](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  Table [dbo].[ISSUE_HISTORY]    Script Date: 22.06.2021 8:50:03 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -113,14 +113,10 @@ CREATE TABLE [dbo].[ISSUE_HISTORY](
 	[CREATEDDATE] [datetime] NULL,
 	[FIELDNAME] [nvarchar](255) NULL,
 	[FROMVALUE] [nvarchar](255) NULL,
-	[TOVALUE] [nvarchar](255) NULL,
- CONSTRAINT [PK_JIRA_ISSUE_HISTORY] PRIMARY KEY CLUSTERED 
-(
-	[ID] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+	[TOVALUE] [nvarchar](255) NULL
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[LOG]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  Table [dbo].[LOG]    Script Date: 22.06.2021 8:50:03 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -140,7 +136,7 @@ CREATE TABLE [dbo].[LOG](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  Table [dbo].[SERVICEDESK_WO]    Script Date: 22.06.2021 8:50:03 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -151,17 +147,14 @@ CREATE TABLE [dbo].[SERVICEDESK_WO](
 	[opencount] [int] NULL
 ) ON [PRIMARY]
 GO
-/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 10.06.2021 13:01:47 ******/
+/****** Object:  View [dbo].[ERP_STATS]    Script Date: 22.06.2021 8:50:03 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 
-
-
-
-CREATE view [dbo].[ISSUE_STATS] as
+CREATE view [dbo].[ERP_STATS] as
 with gen as 
 	 (
 		select 0 AS num
@@ -200,7 +193,21 @@ select '''' + convert(nvarchar, t.fday) fday,
 											  'Торопов Роман Александрович',
 											  'Фомичев Андрей Олегович')
 					 then 'Dev: ' + ji.assigneeuser
-					 else 'Sup: ' + ji.assigneeuser
+					 when ji.assigneeuser in ('Зинина Марина Александровна',
+											  'Горшкова Наталия Алексеевна',
+											  'Шарапова Галина Адольфовна',
+											  'Балунова Наталья Анатольевна',
+											  'Конев Сергей Евгеньевич',
+											  'Коноплев Илья Андреевич',
+											  'Должиков Максим Станиславович',
+											  'Арсеньева Ирина Викторовна',
+											  'Горбунова Наталья Вячеславовна',
+											  'Сутягин Александр Сергеевич',
+											  'Курганова Нина Олеговна [X]',
+											  'Каленых Юрий Николаевич',
+											  'Купаев Сергей Сергеевич [X]')
+                     then 'Sup: ' + ji.assigneeuser
+					 else ji.assigneeuser
 				   end assigneeuser,
 				   case 
 					 when jih.tovalue is null and convert(date, ji.created) <= convert(date, calendar.fday) then '01. Новая'
@@ -224,6 +231,27 @@ select '''' + convert(nvarchar, t.fday) fday,
 					from gen
 			  ) calendar
 			  left join dbo.issue ji on convert(date, calendar.fday) >= convert(date, ji.created) 
+									 and (ji."KEY" like 'ERP-%'
+									   or ji.assigneeuser in ('Замятин Вячеслав Геннадьевич',
+															  'Гаменюк Аким Юрьевич',
+															  'Горячевский Виктор Николаевич',
+															  'Карашманова Ирина Михайловна',
+															  'Никоноренков Алексей Валентинович',
+															  'Торопов Роман Александрович',
+															  'Фомичев Андрей Олегович',
+															  'Зинина Марина Александровна',
+															  'Горшкова Наталия Алексеевна',
+															  'Шарапова Галина Адольфовна',
+															  'Балунова Наталья Анатольевна',
+															  'Конев Сергей Евгеньевич',
+															  'Коноплев Илья Андреевич',
+															  'Должиков Максим Станиславович',
+															  'Арсеньева Ирина Викторовна',
+															  'Горбунова Наталья Вячеславовна',
+															  'Сутягин Александр Сергеевич',
+															  'Курганова Нина Олеговна [X]',
+															  'Каленых Юрий Николаевич',
+															  'Купаев Сергей Сергеевич [X]'))
 			  left join dbo.issue_history jih on convert(date, calendar.fday) >= convert(date, jih.createddate) 
 	    									  and jih.jiraidentifier = ji.jiraidentifier
 			  
@@ -236,9 +264,87 @@ select '''' + convert(nvarchar, t.fday) fday,
 	group by t.fday, t.assigneeuser, t.statusname, t.category, t.direction
 	--option (maxrecursion 10000)
 
+GO
+/****** Object:  View [dbo].[ISSUE_STATS]    Script Date: 22.06.2021 8:50:03 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
+CREATE view [dbo].[ISSUE_STATS] as
+with gen as 
+	 (
+		select 0 AS num
+		union all
+		select num + 1 from gen where num < 1000
+		
+	 )
+select '''' + convert(nvarchar, t.fday) fday, 
+       t.assigneeuser, t.statusname, t.project,
+       sum(t.open_count) open_count,  
+       sum(t.closed_count) closed_count,  
+       sum(t.all_count) all_count
+	from
+	(
+		select  t.*,
+				case when t.statusname <> '07. Закрыта' then t.count else 0 end open_count,
+				case when t.statusname = '07. Закрыта' then t.count else 0 end closed_count,
+				t.count all_count,
+				row_number() over (partition by t.jiraidentifier, t.statusname order by t.fday) r2
+		from
+		(
+			select ji.jiraidentifier,
+				   calendar.fday,
+				   ji.assigneeuser,
+				   SUBSTRING("KEY", 1, CHARINDEX('-', "KEY", 1) - 1) project,
+				   case 
+					 when jih.tovalue is null and convert(date, ji.created) <= convert(date, calendar.fday) then '01. Новая'
+					 when jih.tovalue in ('Новая', 'Бэклог', 'Backlog') then '01. Новая'
+					 when jih.tovalue in ('To Do', 'Сделать', 'Отложено', 'Запланировано', 'Нужно сделать', 'Готово к разработке', 'Очередь на исполнение', 'Ждёт проработки') then '02. Сделать'
+					 when jih.tovalue in ('В работе', 'TODAY', 'Сегодня', 'In Progress', 'В разработке', 'Анализ', 'Проработка') then '03. В работе'
+					 when jih.tovalue in ('Ожидание Заказчика', 'Риски заказчика', 'Согласование с БП', 'На проверке бизнесом', 'Согласование', 'Ожидание', 'Ожидание ответа') then '04. Ожидание Заказчика'
+					 when jih.tovalue in ('Ожидание ИТ', 'Риски ИТ') then '05. Ожидание ИТ'
+					 when jih.tovalue in ('Приёмка', 'Тестирование', 'На проверке', 'Ревью') then '06. Тестирование'
+					 when jih.tovalue in ('Выполнена', 'Отменена', 'Done', 'Закрыта', 'Готово', 'Cancelled', 'Ждёт релиза') then '07. Закрыта'
+					 else '00. Прочее'
+				   end statusname,
+				   1 count,
+				   row_number() over (partition by calendar.fday, ji.jiraidentifier order by jih.createddate desc) r1
+			  from
+			  (
+				  select dateadd(day, num, convert(date, '2020-01-01')) fday
+					from gen
+			  ) calendar
+			  left join dbo.issue ji on convert(date, calendar.fday) >= convert(date, ji.created) 
+			  left join dbo.issue_history jih on convert(date, calendar.fday) >= convert(date, jih.createddate) 
+	    									  and jih.jiraidentifier = ji.jiraidentifier
+			  
+			  where calendar.fday < getdate()
+		) t
+		where t.r1 = 1
+	) t
+	where (t.statusname <> '07. Закрыта' or (t.statusname = '07. Закрыта' and t.r2 <= 7))
+	and datepart(weekday, t.fday) not in ('7', '1')
+	group by t.fday, t.assigneeuser, t.statusname, t.project
+	--option (maxrecursion 10000)
 
-
+GO
+SET ANSI_PADDING ON
+GO
+/****** Object:  Index [SK_KEY]    Script Date: 22.06.2021 8:50:03 ******/
+CREATE UNIQUE NONCLUSTERED INDEX [SK_KEY] ON [dbo].[ISSUE]
+(
+	[KEY] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+GO
+SET ANSI_PADDING ON
+GO
+/****** Object:  Index [PK_ID_FIELDNAME]    Script Date: 22.06.2021 8:50:03 ******/
+CREATE UNIQUE NONCLUSTERED INDEX [PK_ID_FIELDNAME] ON [dbo].[ISSUE_HISTORY]
+(
+	[ID] ASC,
+	[FIELDNAME] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 GO
 ALTER TABLE [dbo].[ISSUE_HISTORY]  WITH CHECK ADD  CONSTRAINT [FK_ISSUE_HISTORY_ISSUE] FOREIGN KEY([JIRAIDENTIFIER])
 REFERENCES [dbo].[ISSUE] ([JIRAIDENTIFIER])

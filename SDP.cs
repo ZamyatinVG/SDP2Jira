@@ -98,33 +98,6 @@ namespace SDP2Jira
 
         public static RequestList requestList;
         public static NoteList noteList;
-        public static void GetRequestList(string technicianName)
-        {
-            var client = new RestClient(@$"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests?format=json&input_data= 
-                                        {{
-                                            ""list_info"": 
-                                            {{
-                                                ""row_count"": 50,
-                                                ""start_index"": 1,
-                                                ""sort_field"": ""id"",
-                                                ""sort_order"": ""desc"",
-                                                ""get_total_count"": true,
-                                                ""search_fields"": 
-                                                {{
-                                                    ""technician.name"": ""{technicianName}"",
-			                                        ""status.name"": ""Открыт""
-                                                }}
-                                            }}
-                                        }}")
-            {
-                Timeout = -1
-            };
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
-            request.AlwaysMultipartFormData = true;
-            IRestResponse response = client.Execute(request);
-            requestList = JsonConvert.DeserializeObject<RequestList>(response.Content);
-        }
         public static Request GetRequest(string request_id)
         {
             var client = new RestClient($"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests/{request_id}")
