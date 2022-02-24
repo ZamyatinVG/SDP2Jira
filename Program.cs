@@ -157,26 +157,10 @@ namespace SDP2Jira
                     }
                     else
                         issue["Направление"] = request.Udf_fields.Udf_pick_3901;
-                    if (request.Item == null)
-                    {
-                        Logger.Error("Field \"Category/Subcategory/Position\" is not filled!");
-                        return;
-                    }
-                    else
-                    {
-                        issue["Категория"] = request.Item.Name;
-                        if (issue["Категория"] == "Доработка нового функционала" ||
-                            issue["Категория"] == "Развитие собственной доработки" ||
-                            issue["Категория"] == "Развитие стандартного функционала")
-                            issue.Type = "10100"; //Improvement
-                        else
-                            issue.Type = "10206"; //Analysis
-                    }
+                    issue.Type = "10206"; //Analysis
                 }
                 else
-                {
                     issue.Type = "10301"; //Task
-                }
                 try
                 {
                     issue.SaveChanges();
@@ -274,7 +258,7 @@ namespace SDP2Jira
                     Logger.Warn(request_result);
                     warning++;
                 }
-                Logger.Info($"Issue {issue.Key} created with {warning} warnings.");
+                Console.WriteLine($"Issue {issue.Key} created with {warning} warnings.");
             }
         }
         private static void SyncRequest(string request_id, string project, string username)

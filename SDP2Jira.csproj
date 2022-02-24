@@ -3,9 +3,9 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <Version>0.9.26</Version>
+    <Version>0.9.27</Version>
     <Authors>ZamyatinVG</Authors>
-    <Company>Askona</Company>
+    <Company></Company>
     <ApplicationIcon>jira-256.ico</ApplicationIcon>
   </PropertyGroup>
   
