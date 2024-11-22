@@ -3,68 +3,60 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.DirectoryServices;
 using System.Configuration;
-using System.Collections.Generic;
 using System.IO;
 using Atlassian.Jira;
+using System.Data;
+using Excel = Microsoft.Office.Interop.Excel;
+using NLog;
 
 namespace SDP2Jira
 {
     class Program
     {
         private static Jira jira;
-        private static readonly DbLogger Logger = new DbLogger();
-        private static string LDAP_ASKONA = "LDAP://DC=hcaskona,DC=com";
-        private static string LDAP_PMT = "LDAP://DC=gw-ad,DC=local";
+        private static readonly string LDAP_ASKONA = "LDAP://DC=hcaskona,DC=com";
+        private static readonly string LDAP_PMT = "LDAP://DC=gw-ad,DC=local";
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
         private static string HtmlToPlainText(string html)
         {
-            //https://stackoverflow.com/questions/286813/how-do-you-convert-html-to-plain-text
-            const string tagWhiteSpace = @"(>|$)(\W|\n|\r)+<"; //matches one or more (white space or line breaks) between '>' and '<'
-            const string stripFormatting = @"<[^>]*(>|$)"; //match any character between '<' and '>', even when end tag is missing
-            const string lineBreak = @"<(br|BR)\s{0,1}\/{0,1}>"; //matches: <br>,<br/>,<br />,<BR>,<BR/>,<BR />
-            var lineBreakRegex = new Regex(lineBreak, RegexOptions.Multiline);
-            var stripFormattingRegex = new Regex(stripFormatting, RegexOptions.Multiline);
-            var tagWhiteSpaceRegex = new Regex(tagWhiteSpace, RegexOptions.Multiline);
-            var text = html;
-            //Decode html specific characters
-            text = System.Net.WebUtility.HtmlDecode(text);
-            //Remove tag whitespace/line breaks
-            text = tagWhiteSpaceRegex.Replace(text, "><");
-            //Replace <br /> with line breaks
-            text = lineBreakRegex.Replace(text, Environment.NewLine);
-            //Strip formatting
-            text = stripFormattingRegex.Replace(text, string.Empty);
-            return text;
+            if (string.IsNullOrWhiteSpace(html))
+                return string.Empty;
+            // Декодирование HTML-символов
+            var text = System.Net.WebUtility.HtmlDecode(html);
+            // Удаление пробелов между тегами
+            text = Regex.Replace(text, @"(>|$)(s|\n|\r)+<", "><");
+            // Замена <br> на переносы строк
+            text = Regex.Replace(text, @"<brs*/?>", Environment.NewLine, RegexOptions.IgnoreCase);
+            // Удаление всех остальных тегов
+            text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+            return text.Trim(); // Удаляем лишние пробелы в начале и конце
         }
         private static bool IsLoginExists(string ldap, string mail, string displayname, out string login)
         {
-            login = "";
-            DirectoryEntry de = new DirectoryEntry(ldap);
-            DirectorySearcher ds = new DirectorySearcher(de)
-            {
-                Filter = mail == null || mail == "" ? $"(displayname={displayname})" : $"(mail={mail})",
-                PropertiesToLoad = { "samaccountname" }
-            };
+            login = string.Empty;
+            using DirectoryEntry de = new(ldap);
+            using DirectorySearcher ds = new(de);
+            ds.Filter = string.IsNullOrWhiteSpace(mail)
+                ? $"(displayname={displayname})"
+                : $"(mail={mail})";
+            ds.PropertiesToLoad.Add("samaccountname");
             SearchResult sr = ds.FindOne();
-            if (sr == null)
-                return false;
-            else
+            // Если результат не найден, возвращаем false
+            if (sr == null || sr.Properties["samaccountname"].Count == 0)
             {
-                if (sr.Properties["samaccountname"].Count == 0)
-                    if (ldap == LDAP_ASKONA)
-                        return IsLoginExists(LDAP_PMT, mail, displayname, out login);
-                    else
-                        return false;
-                else
-                {
-                    login = sr.Properties["samaccountname"][0].ToString();
-                    return true;
-                }
+                // Если ldap - это LDAP_ASKONA, выполняем рекурсивный вызов
+                if (ldap == LDAP_ASKONA)
+                    return IsLoginExists(LDAP_PMT, mail, displayname, out login);
+                return false;
             }
+            // Получаем логин
+            login = sr.Properties["samaccountname"][0].ToString();
+            return true;
         }
         private static async void AddAttachmentsAsync(Issue issue, string path)
         {
             byte[] data = File.ReadAllBytes("files\\" + path);
-            UploadAttachmentInfo info = new UploadAttachmentInfo(path, data);
+            UploadAttachmentInfo info = new(path, data);
             await issue.AddAttachmentAsync(new UploadAttachmentInfo [] { info });
         }
         private static void Main(string[] args)
@@ -72,33 +64,36 @@ namespace SDP2Jira
             Logger.Info("Program is running.");
             try
             {
-                jira = Jira.CreateRestClient(ConfigurationManager.AppSettings["JIRA_SERVER"],
-                                             ConfigurationManager.AppSettings["JIRA_LOGIN"],
-                                             ConfigurationManager.AppSettings["JIRA_PASS"]);
+                string jiraServer = ConfigurationManager.AppSettings["JIRA_SERVER"];
+                string jiraLogin = ConfigurationManager.AppSettings["JIRA_LOGIN"];
+                string jiraPass = ConfigurationManager.AppSettings["JIRA_PASS"];
+                jira = Jira.CreateRestClient(jiraServer, jiraLogin, jiraPass);
                 var project = jira.Projects.GetProjectAsync("ERP").Result;
-                Logger.Info($"Connected to Jira {ConfigurationManager.AppSettings["JIRA_SERVER"]}");
+                Logger.Info($"Connected to Jira {jiraServer}");
             }
             catch (Exception ex)
             {
                 Logger.Error("Connection error to Jira!\r\n" + ex.Message);
                 return;
             }
-            if (args[0] == "-r" && args[1]?.Length > 0)
-                if (args.Length == 4 && args[2] == "-u" && args[3]?.Length > 0)
-                    SyncRequest(args[1], "ERP", args[3]);
-                else
-                    if (args.Length == 6 && args[4] == "-proj" && args[5]?.Length > 0)
-                        SyncRequest(args[1], args[5], args[3]);
-                    else
-                        SyncRequest(args[1], "ERP");
-            if (args[0] == "-stats")
-                GetStats();
+            if (args.Length > 0 && args[0] == "-wl")
+            {
+                GetWorkLog();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "-r" && !string.IsNullOrEmpty(args[1]))
+            {
+                string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
+                    ? args[3]
+                    : "ERP";
+                SyncRequest(args[1], projectKey);
+            }
             Logger.Info("Program closed.");
         }
         private static void SyncRequest(string request_id, string project)
         {
             int warning = 0;
-            SDP.Request request = new SDP.Request();
+            SDP.Request request = new();
             try
             {
                 request = SDP.GetRequest(request_id);
@@ -133,7 +128,7 @@ namespace SDP2Jira
                     Logger.Error("Could not determine specialist login!");
                     return;
                 }
-            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Count() > 0)
+            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Any())
             {
                 Logger.Error($"Jira already has issue {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} for request {request.Id}!");
             }
@@ -147,7 +142,7 @@ namespace SDP2Jira
                 issue.Description = SDP.GetRequestUrl(request.Id) + "\r\n" + HtmlToPlainText(request.Description ?? "");
                 issue["Номер заявки SD"] = request.Id;
                 string summary = $"{request.Id} {request.Subject}";
-                issue.Summary = summary.Length > 255 ? summary.Substring(0, 255) : summary;
+                issue.Summary = summary.Length > 255 ? summary[..255] : summary;
                 if (project == "ERP")
                 {
                     if (request.Udf_fields.Udf_pick_3901 == null)
@@ -186,7 +181,7 @@ namespace SDP2Jira
                     }
                     foreach (var nt in SDP.noteList.notes)
                     {
-                        SDP.Note note = new SDP.Note();
+                        SDP.Note note = new();
                         try
                         {
                             note = SDP.GetNote(request.Id, nt.Id);
@@ -210,7 +205,7 @@ namespace SDP2Jira
                             continue;
                         }
                         request.ParseDescription(note.Description ?? "", 1);
-                        Comment comment = new Comment()
+                        Comment comment = new()
                         {
                             Author = note.AuthorLogin,
                             Body = HtmlToPlainText(note.Description ?? "")
@@ -261,105 +256,91 @@ namespace SDP2Jira
                 Console.WriteLine($"Issue {issue.Key} created with {warning} warnings.");
             }
         }
-        private static void SyncRequest(string request_id, string project, string username)
+        private static void GetWorkLog()
         {
-            Logger.userName = username;
-            SyncRequest(request_id, project);
-        }
-        private static void GetStats()
-        {
-            int stop_count = 0;
-            jira.Issues.MaxIssuesPerRequest = 100;
-            List<Issue> jira_issues = new List<Issue>();
-            string[] ji = new string[jira.Issues.MaxIssuesPerRequest];
-            for (int j = 0; j < 1000; j++)
+            var supportList = ConfigurationManager.AppSettings["SUPPORT_LIST"].Split(';').ToList();
+            var startDate = Convert.ToDateTime(ConfigurationManager.AppSettings["WORKLOG_STARTDATE"]);
+            var endDate = Convert.ToDateTime(ConfigurationManager.AppSettings["WORKLOG_ENDDATE"]);
+            DataTable dt = new();
+            dt.Columns.Add("Задача");
+            dt.Columns.Add("Бизнес-юнит");
+            dt.Columns.Add("Тип задачи");
+            dt.Columns.Add("ФИО");
+            dt.Columns.Add("Рабочее время", typeof(double));
+            // JQL-запрос для получения задач с worklog за период
+            var worklogJQL = $"project in (ERP, AT) and worklogDate >= '{startDate:yyyy-MM-dd}' and worklogDate <= '{endDate:yyyy-MM-dd}'";
+            IssueSearchOptions options = new(worklogJQL)
             {
-                for (int i = 0; i < jira.Issues.MaxIssuesPerRequest; i++)
-                    ji[i] = (10000 + jira.Issues.MaxIssuesPerRequest * j + i).ToString();
-                try
-                {
-                    jira_issues.Clear();
-                    ICollection<Issue> issues = jira.Issues.GetIssuesAsync(ji).Result.Values;
-                    jira_issues.AddRange(issues);
-                    Logger.Info($"Загружены {j} x {jira.Issues.MaxIssuesPerRequest} задач");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Ошибка загрузки {j} x {jira.Issues.MaxIssuesPerRequest} задач!\r\n" + ex.Message);
-                }
-                if (jira_issues.Count == 0)
-                    stop_count++;
-                else
-                    stop_count = 0;
-                if (stop_count == 10)
-                {
-                    Logger.Info($"Выгрузка статистики по задачам завершена");
-                    return;
-                }
-                jira_issues = jira_issues.Where(x => x.Updated.Value.CompareTo(DateTime.Now.AddDays(-7)) > 0).ToList();
-                GetStat(jira_issues);
-                Logger.Info($"Обработаны {j} x {jira.Issues.MaxIssuesPerRequest} задач");
-            }
-        }
-        private static void GetStat(List<Issue> jira_issues)
-        {
-            LogDbContext context = new LogDbContext();
-            foreach (Issue jira_issue in jira_issues)
+                MaxIssuesPerRequest = 1000
+            };
+            // Получаем задачи по JQL
+            var issues = jira.Issues.GetIssuesFromJqlAsync(options).Result.ToList();
+            Logger.Info($"Всего получено {issues.Count} задач");
+            // Обработка результатов
+            for (int i = 0; i < issues.Count; i++)
             {
-                try
+                Issue issue = issues[i];
+                string type = issue.Type.ToString();
+                if (type == "Подзадача")
                 {
-                    ISSUE issue = context.ISSUE.Where(x => x.JIRAIDENTIFIER == jira_issue.JiraIdentifier).FirstOrDefault();
-                    if (issue == null)
-                    {
-                        issue = new ISSUE
-                        {
-                            JIRAIDENTIFIER = jira_issue.JiraIdentifier
-                        };
-                        context.ISSUE.Add(issue);
-                    }
-                    if (jira_issue.Updated != issue.UPDATED)
-                    {
-                        issue.KEY = jira_issue.Key.Value;
-                        issue.PRIORITY = jira_issue.Priority?.Name;
-                        issue.CREATED = jira_issue.Created;
-                        issue.REPORTERUSER = jira_issue.ReporterUser.DisplayName;
-                        issue.ASSIGNEEUSER = jira_issue.AssigneeUser?.DisplayName;
-                        issue.SUMMARY = jira_issue.Summary;
-                        issue.STATUSNAME = jira_issue.Status.Name;
-                        issue.STORYPOINTS = jira_issue["Story Points"] == null ? 0 : Convert.ToDecimal(jira_issue["Story Points"].Value.Replace('.', ','));
-                        issue.CATEGORY = jira_issue["Категория"]?.Value;
-                        issue.DIRECTION = jira_issue["Направление"]?.Value;
-                        issue.UPDATED = jira_issue.Updated;
-                        issue.TYPE = jira_issue.Type.Name;
-
-                        var changeLog = jira_issue.GetChangeLogsAsync().Result;
-                        foreach (var history in changeLog)
-                            foreach (var item in history.Items)
-                                if (item.FieldName == "status"/* || item.FieldName == "issuetype"*/)
-                                {
-                                    ISSUE_HISTORY issue_History = context.ISSUE_HISTORY.Where(x => x.ID == history.Id && x.FIELDNAME == item.FieldName).FirstOrDefault();
-                                    if (issue_History == null)
-                                    {
-                                        issue_History = new ISSUE_HISTORY
-                                        {
-                                            ID = history.Id,
-                                            FIELDNAME = item.FieldName
-                                        };
-                                        context.ISSUE_HISTORY.Add(issue_History);
-                                    }
-                                    issue_History.JIRAIDENTIFIER = jira_issue.JiraIdentifier;
-                                    issue_History.CREATEDDATE = history.CreatedDate;
-                                    issue_History.FROMVALUE = item.FromValue;
-                                    issue_History.TOVALUE = item.ToValue;
-                                }
-                    }
+                    issue = jira.Issues.GetIssueAsync(issue.ParentIssueKey).Result;
+                    type = issue.Type.ToString();
                 }
-                catch (Exception ex)
+                type = type switch
                 {
-                    Logger.Error($"Ошибка обработки задачи {jira_issue.Key}!\r\n" + ex.Message);
-                }
+                    "Улучшение" => "CHANGE",
+                    "Тех.долг" => "TECH DEBT",
+                    _ => "RUN",
+                };
+                // Получаем связанную инициативу
+                var linkedIssue = issue.GetIssueLinksAsync().Result
+                            .Where(x => x.InwardIssue.Key.ToString().StartsWith("ITP") || x.OutwardIssue.Key.ToString().StartsWith("ITP")).FirstOrDefault();
+                string issueKey = linkedIssue != null ? linkedIssue.InwardIssue.Key.ToString().StartsWith("ITP") ? linkedIssue.InwardIssue.Key.ToString() : linkedIssue.OutwardIssue.Key.ToString() : issue.Key.ToString();
+                // Получаем все worklog для задачи
+                var worklogs = issues[i].GetWorklogsAsync().Result.ToList();
+                foreach (var worklog in worklogs)
+                    if ((supportList.Contains(worklog.AuthorUser.DisplayName) || string.IsNullOrEmpty(supportList[0])) &&
+                        worklog.StartDate?.Date >= startDate && worklog.StartDate?.Date <= endDate)
+                        dt.Rows.Add(issueKey, issue.CustomFields["Направление"].Values.GetValue(0), type, worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2));
+                if ((i + 1) % 50 == 0)
+                    Logger.Info($"Обработано {i + 1} задач");
             }
-            context.SaveChanges();
+            ExportToExcel(dt);
+        }
+        private static void ExportToExcel(DataTable dt)
+        {
+            // Создаем экземпляр Excel
+            Excel.Application exApp = new();
+            Excel.Workbook exWB = exApp.Workbooks.Add();
+            Excel.Worksheet exWS = (Excel.Worksheet)exWB.Worksheets[1];
+            exWS.Name = "Рабочее время";
+            // Установка заголовков
+            for (int j = 0; j < dt.Columns.Count; j++)
+                exWS.Cells[1, j + 1] = dt.Columns[j].ColumnName;
+            // Заполнение данными
+            var objectData = new object[dt.Rows.Count, dt.Columns.Count];
+            for (int i = 0; i < dt.Rows.Count; i++)
+                for (int j = 0; j < dt.Columns.Count; j++)
+                    objectData[i, j] = dt.Rows[i][j];
+            // Запись данных в диапазон
+            Excel.Range startCell = exWS.Cells[2, 1]; // Начинаем со второй строки
+            Excel.Range endCell = startCell.Offset[dt.Rows.Count - 1, dt.Columns.Count - 1];
+            Excel.Range writeRange = exWS.Range[startCell, endCell];
+            writeRange.Value2 = objectData;
+            // Форматирование
+            Excel.Range headerRange = exWS.Range["A1", "A1"].Resize[1, dt.Columns.Count];
+            headerRange.Font.Bold = true;
+            headerRange.HorizontalAlignment = Excel.XlHAlign.xlHAlignCenter;
+            // Установка границ
+            writeRange.Borders.LineStyle = Excel.XlLineStyle.xlContinuous;
+            // Фильтрация
+            object missingValue = System.Reflection.Missing.Value;
+            headerRange.AutoFilter(1, missingValue, Excel.XlAutoFilterOperator.xlAnd, missingValue, true);
+            // Авторазмер колонок
+            exWS.Columns.AutoFit();
+            // Показать Excel
+            exApp.Visible = true;
+            exApp.Interactive = true;
         }
     }
 }
