@@ -10,20 +10,23 @@ using Excel = Microsoft.Office.Interop.Excel;
 using NLog;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Globalization;
+using System.Threading;
 
 namespace SDP2Jira
 {
     class Program
     {
         private static Jira jira;
+        private static string jiraServer = string.Empty;
         private static readonly string LDAP_ASKONA = "LDAP://DC=hcaskona,DC=com";
         private static readonly string LDAP_PMT = "LDAP://DC=gw-ad,DC=local";
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
         private static List<string> supportList = new();
         private static DateTime startDate;
         private static DateTime endDate;
-        private static int threadCount = 10;
-        private static readonly object lockObject = new object();
+        private static readonly int threadCount = 10;
+        private static readonly object lockObject = new();
         private static string HtmlToPlainText(string html)
         {
             if (string.IsNullOrWhiteSpace(html))
@@ -71,7 +74,7 @@ namespace SDP2Jira
             Logger.Info("Program is running.");
             try
             {
-                string jiraServer = ConfigurationManager.AppSettings["JIRA_SERVER"];
+                jiraServer = ConfigurationManager.AppSettings["JIRA_SERVER"];
                 string jiraLogin = ConfigurationManager.AppSettings["JIRA_LOGIN"];
                 string jiraPass = ConfigurationManager.AppSettings["JIRA_PASS"];
                 jira = Jira.CreateRestClient(jiraServer, jiraLogin, jiraPass);
@@ -275,11 +278,8 @@ namespace SDP2Jira
             dt.Columns.Add("ФИО");
             dt.Columns.Add("Рабочее время", typeof(double));
             dt.Columns.Add("Дата");
-            dt.Columns.Add("ITP тип цели");
-            dt.Columns.Add("ITP эффект");
-            dt.Columns.Add("ITP статус");
-            dt.Columns.Add("ITP тема");
-            dt.Columns.Add("ITP оценка Галактики");
+            dt.Columns.Add("Неделя");
+            dt.Columns.Add("Тема");
             // JQL-запрос для получения задач с worklog за период
             var worklogJQL = $"project in (ERP, AT) and worklogDate >= '{startDate:yyyy-MM-dd}' and worklogDate <= '{endDate:yyyy-MM-dd}'";
             IssueSearchOptions options = new(worklogJQL)
@@ -290,68 +290,57 @@ namespace SDP2Jira
             var issues = jira.Issues.GetIssuesFromJqlAsync(options).Result.ToList();
             Logger.Info($"Всего получено {issues.Count} задач");
 
-            List<Task> taskList = new();
-            for (int i = 0; i < threadCount; i++)
+            // Счетчик для отслеживания прогресса
+            int processedCount = 0;
+            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = threadCount };
+            Parallel.ForEach(issues, parallelOptions, issue =>
             {
-                int threadId = i;
-                Action<object> action = x => ProcessIssue((int)x, issues, dt);
-                taskList.Add(new TaskFactory().StartNew(action, threadId));
-            }
-            Task.WaitAll(taskList.ToArray());
+                ProcessIssue(issue, dt);
+                // Атомарно увеличиваем счетчик
+                int currentCount = Interlocked.Increment(ref processedCount);
+                if (currentCount % 100 == 0)
+                    Logger.Info($"Обработано {currentCount} задач из {issues.Count}");
+            });
             ExportToExcel(dt);
         }
-        private static void ProcessIssue(int threadId, List<Issue> issues, DataTable dt)
+        private static void ProcessIssue(Issue issue, DataTable dt)
         {
-            int j = 0;
-            // Обработка результатов
-            for (int i = 0; i < issues.Count; i++)
+            string issueType = issue.Type.ToString();
+            Issue parentIssue = issueType == "Подзадача" ? jira.Issues.GetIssueAsync(issue.ParentIssueKey).Result : issue;
+            issueType = parentIssue.Type.ToString() switch
             {
-                if (i % threadCount == threadId)
-                {
-                    j++;
-                    Issue issue = issues[i];
-                    string type = issue.Type.ToString();
-                    if (type == "Подзадача")
+                "Улучшение" => "CHANGE",
+                "Тех.долг" => "TECH DEBT",
+                _ => "RUN",
+            };
+            // Получаем связанную инициативу
+            var linkedIssueLink = parentIssue.GetIssueLinksAsync().Result
+                .FirstOrDefault(x => x.InwardIssue.Key.ToString().StartsWith("ITP") || x.OutwardIssue.Key.ToString().StartsWith("ITP"));
+            Issue linkedIssue = linkedIssueLink != null ? 
+                linkedIssueLink.InwardIssue.Key.ToString().StartsWith("ITP") ? 
+                linkedIssueLink.InwardIssue : 
+                linkedIssueLink.OutwardIssue : 
+                null;
+            string issueKey = linkedIssue != null ? linkedIssue.Key.ToString() : parentIssue.Key.ToString();
+            string issueSummary = linkedIssue != null ? linkedIssue.Summary : parentIssue.Summary;
+            // Получаем все worklog для задачи
+            var worklogs = issue.GetWorklogsAsync().Result.ToList();
+            foreach (var worklog in worklogs)
+            {
+                DateTime wlDate = worklog.StartDate.Value.Date;
+                if ((supportList.Contains(worklog.AuthorUser.DisplayName) || string.IsNullOrEmpty(supportList[0])) &&
+                    wlDate >= startDate && wlDate <= endDate)
+                    lock (lockObject)
                     {
-                        issue = jira.Issues.GetIssueAsync(issue.ParentIssueKey).Result;
-                        type = issue.Type.ToString();
+                        dt.Rows.Add($"{jiraServer}/browse/{issueKey}",
+                                    parentIssue.CustomFields["Направление"]?.Values.GetValue(0),
+                                    issueType,
+                                    worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
+                                    wlDate,
+                                    $"{wlDate.Year} {ISOWeek.GetWeekOfYear(wlDate)}",
+                                    issueSummary.Length < 125 ? issueSummary : issueSummary[..125]
+                                   );
                     }
-                    type = type switch
-                    {
-                        "Улучшение" => "CHANGE",
-                        "Тех.долг" => "TECH DEBT",
-                        _ => "RUN",
-                    };
-                    // Получаем связанную инициативу
-                    var linkedIssueLink = issue.GetIssueLinksAsync().Result
-                        .FirstOrDefault(x => x.InwardIssue.Key.ToString().StartsWith("ITP") || x.OutwardIssue.Key.ToString().StartsWith("ITP"));
-                    Issue linkedIssue = linkedIssueLink != null ? 
-                        linkedIssueLink.InwardIssue.Key.ToString().StartsWith("ITP") ? 
-                        linkedIssueLink.InwardIssue : 
-                        linkedIssueLink.OutwardIssue : 
-                        null;
-                    string issueKey = linkedIssue != null ? linkedIssue.Key.ToString() : issue.Key.ToString();
-                    // Получаем все worklog для задачи
-                    var worklogs = issues[i].GetWorklogsAsync().Result.ToList();
-                    foreach (var worklog in worklogs)
-                        if ((supportList.Contains(worklog.AuthorUser.DisplayName) || string.IsNullOrEmpty(supportList[0])) &&
-                            worklog.StartDate?.Date >= startDate && worklog.StartDate?.Date <= endDate)
-                            lock(lockObject)
-                            {
-                                dt.Rows.Add(issueKey,
-                                            issue.CustomFields["Направление"]?.Values.GetValue(0),
-                                            type,
-                                            worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
-                                            worklog.StartDate?.Date,
-                                            linkedIssue?.CustomFields["Тип цели"]?.Values.GetValue(0),
-                                            linkedIssue?.CustomFields["Эффект для компании"]?.Values.GetValue(0),
-                                            linkedIssue?.Status.Name,
-                                            linkedIssue?.Summary,
-                                            linkedIssue?.CustomFields["Оценка Галактики"]?.Values.GetValue(0));
-                            }
-                    if (j % 10 == 0)
-                        Logger.Info($"Поток {threadId} - обработано {j} задач");
-                }
             }
         }
         private static void ExportToExcel(DataTable dt)
