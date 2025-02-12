@@ -15,24 +15,22 @@ namespace SDP2Jira
                 public string Id { get; set; }
                 public string Name { get; set; }
                 public string Email_id { get; set; }
-                public string Udf_pick_3901 { get; set; }
+                public string Udf_pick_901 { get; set; }
             }
             public class Attachment
             {
-                public string File_name { get; set; }
                 public string Content_url { get; set; }
                 public int Type { get; set; }
+                public string Name { get; set; }
             }
             public string Id { get; set; }
             public Sub Requester { get; set; }
             public Sub Technician { get; set; }
             public string Subject { get; set; }
             public string Description { get; set; }
-            public Sub Item { get; set; }
             public Sub Udf_fields { get; set; }
-            public Sub Status { get; set; }
 
-            public List<Attachment> Attachments = new List<Attachment>();
+            public List<Attachment> Attachments = new();
             public string AuthorLogin { get; set; }
             public string SpecialistLogin { get; set; }
             public bool Has_notes { get; set; }
@@ -41,19 +39,20 @@ namespace SDP2Jira
                 //парсим визуальные вложения в описании заявки
                 while (description.Length > 0)
                 {
-                    int index = description.IndexOf("src=\"");
+                    int index = description.IndexOf("img src=\"");
                     if (index < 0)
                         description = "";
                     else
                     {
-                        SDP.Request.Attachment attachment = new SDP.Request.Attachment();
-                        description = description.Substring(index + 5);
+                        Attachment attachment = new();
+                        description = description.Substring(index + 9);
                         index = description.IndexOf("\"");
                         attachment.Content_url = description.Substring(0, index);
                         index = attachment.Content_url.LastIndexOf("/");
-                        attachment.File_name = attachment.Content_url.Substring(index + 1);
+                        attachment.Name = attachment.Content_url.Substring(index + 1);
                         attachment.Type = type;
-                        this.Attachments.Add(attachment);
+                        if (attachment.Name != string.Empty)
+                            Attachments.Add(attachment);
                     }
                 }
             }
@@ -68,34 +67,32 @@ namespace SDP2Jira
             public string Status_code { get; set; }
             public string Status { get; set; }
 
-            public List<Msg> Messages = new List<Msg>();
+            public List<Msg> Messages = new();
         }
         public class RequestList
         {
-            public List<Request> requests = new List<Request>();
+            public List<Request> requests = new();
         }
         public class RequestMessage
         {
             public Request Request { get; set; }
             public Response_status Response_status { get; set; }
         }
-
         public class Note
         {
             public string Id { get; set; }
             public string Description { get; set; }
-            public Request.Sub Created_by { get; set; }
+            public Request.Sub Added_by { get; set; }
             public string AuthorLogin { get; set; }
         }
         public class NoteList
         {
-            public List<Note> notes = new List<Note>();
+            public List<Note> notes = new();
         }
         public class NoteMessage
         {
-            public Note request_note = new Note();
+            public Note note = new();
         }
-
         public static RequestList requestList;
         public static NoteList noteList;
         public static Request GetRequest(string request_id)
@@ -110,7 +107,7 @@ namespace SDP2Jira
             var requestMessage = JsonConvert.DeserializeObject<RequestMessage>(response.Content);
             return requestMessage.Request;
         }
-        public static void DowloadFile(string url, string filename)
+        public static string DowloadFile(string url, string filename)
         {
             var client = new RestClient(ConfigurationManager.AppSettings["SDP_SERVER"] + url)
             {
@@ -121,7 +118,23 @@ namespace SDP2Jira
             byte[] response = client.DownloadData(request);
             if (!Directory.Exists("files\\"))
                 Directory.CreateDirectory("files\\");
+            if (Path.GetExtension(filename) == string.Empty)
+                filename += GetFileExtension(response);
             File.WriteAllBytes("files\\" + filename, response);
+            return filename;
+        }
+        public static string GetFileExtension(byte[] fileBytes)
+        {
+            if (fileBytes.Length < 4)
+                return string.Empty;
+            // PNG
+            if (fileBytes[0] == 0x89 && fileBytes[1] == 0x50 && fileBytes[2] == 0x4E && fileBytes[3] == 0x47)
+                return ".png";
+            // JPEG
+            if (fileBytes[0] == 0xFF && fileBytes[1] == 0xD8 && fileBytes[2] == 0xFF)
+                return ".jpg";
+            // Если формат не распознан
+            return string.Empty; 
         }
         public static string CloseRequest(string request_id, out string status_code)
         {
@@ -131,7 +144,7 @@ namespace SDP2Jira
                                             {{
                                                 ""status"": 
                                                 {{
-                                                    ""id"": ""2101""
+                                                    ""id"": ""303""
                                                 }}
                                             }}
                                         }}")
@@ -173,7 +186,7 @@ namespace SDP2Jira
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
             IRestResponse response = client.Execute(request);
             var noteMessage = JsonConvert.DeserializeObject<NoteMessage>(response.Content);
-            return noteMessage.request_note;
+            return noteMessage.note;
         }
         
     }

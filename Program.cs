@@ -86,17 +86,25 @@ namespace SDP2Jira
                 Logger.Error("Connection error to Jira!\r\n" + ex.Message);
                 return;
             }
-            if (args.Length > 0 && args[0] == "-wl")
+            if (args.Length == 0)
             {
-                GetWorkLog();
+                Logger.Info("Program closed. Invalid arguments.");
                 return;
             }
-            if (args.Length > 0 && args[0] == "-r" && !string.IsNullOrEmpty(args[1]))
+            switch (args[0])
             {
-                string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
-                    ? args[3]
-                    : "ERP";
-                SyncRequest(args[1], projectKey);
+                case "-wl":
+                    GetWorkLog();
+                    break;
+                case "-r" when args.Length > 1:
+                    string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
+                        ? args[3]
+                        : "ERP";
+                    SyncRequest(args[1], projectKey);
+                    break;
+                default:
+                    Logger.Info("Invalid arguments.");
+                    break;
             }
             Logger.Info("Program closed.");
         }
@@ -110,7 +118,6 @@ namespace SDP2Jira
                 if (request == null)
                     throw new Exception("Request not found!");
                 else
-                    //Logger.Info("Data received for request:\r\n" + JsonConvert.SerializeObject(request, Formatting.Indented));
                     Logger.Info($"Data received for request {request.Id}.");
             }
             catch (Exception ex)
@@ -155,13 +162,13 @@ namespace SDP2Jira
                 issue.Summary = summary.Length > 255 ? summary[..255] : summary;
                 if (project == "ERP")
                 {
-                    if (request.Udf_fields.Udf_pick_3901 == null)
+                    if (request.Udf_fields.Udf_pick_901 == null)
                     {
                         Logger.Error("Field \"Direction\" is not filled!");
                         return;
                     }
                     else
-                        issue["Направление"] = request.Udf_fields.Udf_pick_3901;
+                        issue["Направление"] = request.Udf_fields.Udf_pick_901;
                     issue.Type = "10206"; //Analysis
                 }
                 else
@@ -176,6 +183,8 @@ namespace SDP2Jira
                     Logger.Error($"Issue creation error in Jira for request {request.Id}!\r\n" + ex.Message);
                     return;
                 }
+                //Чтение примечаний и заполнение комментариев
+                var commentDictionary = new Dictionary<string, Comment>();
                 if (request.Has_notes)
                 {
                     try
@@ -203,7 +212,7 @@ namespace SDP2Jira
                             warning++;
                             continue;
                         }
-                        if (IsLoginExists(LDAP_ASKONA, note.Created_by.Email_id, note.Created_by.Name, out string notelogin))
+                        if (IsLoginExists(LDAP_ASKONA, note.Added_by?.Email_id, note.Added_by?.Name, out string notelogin))
                         {
                             Logger.Info($"Author of note: {notelogin}.");
                             note.AuthorLogin = notelogin;
@@ -214,18 +223,16 @@ namespace SDP2Jira
                             warning++;
                             continue;
                         }
-                        request.ParseDescription(note.Description ?? "", 1);
+                        request.ParseDescription(note.Description ?? "", Convert.ToInt32(note.Id));
                         Comment comment = new()
                         {
                             Author = note.AuthorLogin,
-                            Body = HtmlToPlainText(note.Description ?? "")
+                            Body = "{color:#ffab00}*" + note.Added_by.Name + "* добавил(а) примечание:{color}\r\n\r\n" + HtmlToPlainText(note.Description ?? "")
                         };
-                        foreach (SDP.Request.Attachment attachment in request.Attachments)
-                            if (attachment.Type == 1)
-                                comment.Body += $"[^{attachment.File_name}]";
-                        issue.AddCommentAsync(comment);
+                        commentDictionary.Add(note.Id, comment);
                     }
                 }
+                //Чтение и запись вложений
                 if (request.Attachments.Count > 0)
                 {
                     Logger.Info($"Loading of attachments has started for request {request.Id}.");
@@ -233,28 +240,38 @@ namespace SDP2Jira
                     {
                         try
                         {
-                            SDP.DowloadFile(attachment.Content_url, attachment.File_name);
-                            Logger.Info($"File {attachment.File_name} apploaded.");
+                            attachment.Name = SDP.DowloadFile(attachment.Content_url, attachment.Name);
+                            Logger.Info($"File {attachment.Name} apploaded.");
                         }
                         catch (Exception ex)
                         {
-                            Logger.Warn($"File {attachment.File_name} appload error!\r\n" + ex.Message);
+                            Logger.Warn($"File {attachment.Name} appload error!\r\n" + ex.Message);
                             warning++;
                             continue;
                         }
                         try
                         {
-                            AddAttachmentsAsync(issue, attachment.File_name);
-                            Logger.Info($"File {attachment.File_name} added to issue {issue.Key}.");
+                            AddAttachmentsAsync(issue, attachment.Name);
+                            Logger.Info($"File {attachment.Name} added to issue {issue.Key}.");
                         }
                         catch (Exception ex)
                         {
-                            Logger.Warn($"Error adding file {attachment.File_name} to issue {issue.Key}!\r\n" + ex.Message);
+                            Logger.Warn($"Error adding file {attachment.Name} to issue {issue.Key}!\r\n" + ex.Message);
                             warning++;
                         }
-                        File.Delete("files\\" + attachment.File_name);
+                        File.Delete("files\\" + attachment.Name);
                     }
                 }
+                //Запись комментариев и связь с вложениями
+                foreach (var pair in commentDictionary)
+                {
+                    foreach (SDP.Request.Attachment attachment in request.Attachments)
+                        if (attachment.Type.ToString() == pair.Key)
+                            pair.Value.Body += $"\r\n[^{attachment.Name}]";
+                    issue.AddCommentAsync(pair.Value);
+                    Logger.Info($"Note {pair.Key} added.");
+                }
+                //Закрытие заявки
                 string request_result = SDP.CloseRequest(request.Id, out string status_code);
                 if (status_code == "2000")
                     Logger.Info(request_result);
