@@ -25,7 +25,7 @@ namespace SDP2Jira
         private static List<string> supportList = new();
         private static DateTime startDate;
         private static DateTime endDate;
-        private static readonly int threadCount = 10;
+        private static readonly int threadCount = 5;
         private static readonly object lockObject = new();
         private static string HtmlToPlainText(string html)
         {
@@ -95,6 +95,9 @@ namespace SDP2Jira
             {
                 case "-wl":
                     GetWorkLog();
+                    break;
+                case "-itp":
+                    GetWorkLogITP();
                     break;
                 case "-r" when args.Length > 1:
                     string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
@@ -345,6 +348,7 @@ namespace SDP2Jira
             foreach (var worklog in worklogs)
             {
                 DateTime wlDate = worklog.StartDate.Value.Date;
+                string week = wlDate.Year.ToString() + "_" + ISOWeek.GetWeekOfYear(wlDate).ToString("D2");
                 if ((supportList.Contains(worklog.AuthorUser.DisplayName) || string.IsNullOrEmpty(supportList[0])) &&
                     wlDate >= startDate && wlDate <= endDate)
                     lock (lockObject)
@@ -354,8 +358,95 @@ namespace SDP2Jira
                                     issueType,
                                     worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
                                     wlDate,
-                                    $"{wlDate.Year} {ISOWeek.GetWeekOfYear(wlDate)}",
+                                    week,
                                     issueSummary.Length < 125 ? issueSummary : issueSummary[..125]
+                                   );
+                    }
+            }
+        }
+        private static void GetWorkLogITP()
+        {
+            startDate = Convert.ToDateTime(ConfigurationManager.AppSettings["WORKLOG_STARTDATE"]);
+            endDate = Convert.ToDateTime(ConfigurationManager.AppSettings["WORKLOG_ENDDATE"]);
+            DataTable dt = new();
+            dt.Columns.Add("ITP Задача");
+            dt.Columns.Add("Бизнес-юнит");
+            dt.Columns.Add("Задача");
+            dt.Columns.Add("Статус");
+            dt.Columns.Add("Рабочее время", typeof(double));
+            dt.Columns.Add("Проект");
+            dt.Columns.Add("Дата");
+            dt.Columns.Add("Тема");
+            dt.Columns.Add("Тип цели");
+            dt.Columns.Add("Эффект");
+            dt.Columns.Add("Платформа");
+            dt.Columns.Add("Коэффициент");
+            dt.Columns.Add("Приведённая EBITDA");
+            // JQL-запрос для получения задач с worklog за период
+            var worklogJQL = $"project = ITP AND Platform = Галактика AND status changed during ('{startDate:yyyy-MM-dd}', '{endDate:yyyy-MM-dd}') to (Deployed) AND statusCategory = Done ORDER BY key ASC";
+            IssueSearchOptions options = new(worklogJQL)
+            {
+                MaxIssuesPerRequest = 10000
+            };
+            // Получаем задачи по JQL
+            var issues = jira.Issues.GetIssuesFromJqlAsync(options).Result.ToList();
+            Logger.Info($"Всего получено {issues.Count} задач");
+
+            // Счетчик для отслеживания прогресса
+            int processedCount = 0;
+            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = threadCount };
+            Parallel.ForEach(issues, parallelOptions, issue =>
+            {
+                ProcessIssueITP(issue, dt);
+                // Атомарно увеличиваем счетчик
+                int currentCount = Interlocked.Increment(ref processedCount);
+                if (currentCount % 10 == 0)
+                    Logger.Info($"Обработано {currentCount} задач из {issues.Count}");
+            });
+            ExportToExcel(dt);
+        }
+        private static void ProcessIssueITP(Issue issue, DataTable dt)
+        {
+            //Ищем связанные с ITP задачи
+            var linkedIssueList = issue.GetIssueLinksAsync().Result
+                .Where(x => !(x.InwardIssue.Project == "ITP") || !(x.OutwardIssue.Project == "ITP"))
+                .Select(x => x.InwardIssue.Project == "ITP" ? x.OutwardIssue : x.InwardIssue).ToList();
+            //Если подвязан эпик, то добавляем задачи из него
+            var linkedEpicIssueList = new List<Issue>();
+            foreach (var linkedIssue in linkedIssueList.Where(x => x.Type.Name == "Эпик"))
+            {
+                string epicJQL = $"\"Epic Link\" = {linkedIssue.Key}";
+                var epicIssues = jira.Issues.GetIssuesFromJqlAsync(new IssueSearchOptions(epicJQL)
+                {
+                    MaxIssuesPerRequest = 100
+                }).Result.ToList();
+                linkedEpicIssueList.AddRange(epicIssues);
+            }
+            linkedIssueList.AddRange(linkedEpicIssueList);
+            //Если есть подзадачи, добавляем их
+            var linkedSubIssueList = new List<Issue>();
+            foreach (var linkedIssue in linkedIssueList)
+                linkedSubIssueList.AddRange(linkedIssue.GetSubTasksAsync().Result);
+            linkedIssueList.AddRange(linkedSubIssueList);
+            foreach (var linkedIssue in linkedIssueList)
+            {
+                var worklogs = linkedIssue.GetWorklogsAsync().Result.ToList();
+                foreach (var worklog in worklogs)
+                    lock (lockObject)
+                    {
+                        dt.Rows.Add($"{jiraServer}/browse/{issue.Key}",
+                                    issue.CustomFields["Business unit"]?.Values.GetValue(0),
+                                    linkedIssue.Key,
+                                    issue.Status.Name,
+                                    Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
+                                    linkedIssue.Project,
+                                    worklog.StartDate.Value.Date,
+                                    issue.Summary.Length < 125 ? issue.Summary : issue.Summary[..125],
+                                    issue.CustomFields["Тип цели"]?.Values.GetValue(0),
+                                    issue.CustomFields["Эффект для компании"]?.Values.GetValue(0),
+                                    issue.CustomFields["Platform"]?.Values.GetValue(0),
+                                    issue.CustomFields["Коэффициент"]?.Values.GetValue(0),
+                                    issue.CustomFields["Приведённая EBITDA"]?.Values.GetValue(0)
                                    );
                     }
             }
