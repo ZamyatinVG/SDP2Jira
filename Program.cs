@@ -148,7 +148,7 @@ namespace SDP2Jira
                     Logger.Error("Could not determine specialist login!");
                     return;
                 }
-            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).Any())
+            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id) && x.Created >= new DateTime(2025, 2, 1)).Any())
             {
                 Logger.Error($"Jira already has issue {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} for request {request.Id}!");
             }
@@ -379,19 +379,15 @@ namespace SDP2Jira
             dt.Columns.Add("Тема");
             dt.Columns.Add("Тип цели");
             dt.Columns.Add("Эффект");
-            dt.Columns.Add("Платформа");
+            dt.Columns.Add("Оценка Галактики");
             dt.Columns.Add("Коэффициент");
             dt.Columns.Add("Приведённая EBITDA");
-            // JQL-запрос для получения задач с worklog за период
-            var worklogJQL = $"project = ITP AND Platform = Галактика AND status changed during ('{startDate:yyyy-MM-dd}', '{endDate:yyyy-MM-dd}') to (Deployed) AND statusCategory = Done ORDER BY key ASC";
-            IssueSearchOptions options = new(worklogJQL)
+            var worklogJQL = $"project = ITP AND Platform = Галактика AND (status changed during ('{startDate:yyyy-MM-dd}', '{endDate:yyyy-MM-dd}') to (Deployed) AND statusCategory = Done OR Sprint in openSprints())";
+            var issues = jira.Issues.GetIssuesFromJqlAsync(new IssueSearchOptions(worklogJQL)
             {
-                MaxIssuesPerRequest = 10000
-            };
-            // Получаем задачи по JQL
-            var issues = jira.Issues.GetIssuesFromJqlAsync(options).Result.ToList();
+                MaxIssuesPerRequest = 100
+            }).Result.ToList();
             Logger.Info($"Всего получено {issues.Count} задач");
-
             // Счетчик для отслеживания прогресса
             int processedCount = 0;
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = threadCount };
@@ -444,7 +440,7 @@ namespace SDP2Jira
                                     issue.Summary.Length < 125 ? issue.Summary : issue.Summary[..125],
                                     issue.CustomFields["Тип цели"]?.Values.GetValue(0),
                                     issue.CustomFields["Эффект для компании"]?.Values.GetValue(0),
-                                    issue.CustomFields["Platform"]?.Values.GetValue(0),
+                                    issue.CustomFields["Оценка Галактики"]?.Values.GetValue(0),
                                     issue.CustomFields["Коэффициент"]?.Values.GetValue(0),
                                     issue.CustomFields["Приведённая EBITDA"]?.Values.GetValue(0)
                                    );
