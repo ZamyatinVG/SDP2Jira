@@ -300,6 +300,8 @@ namespace SDP2Jira
             dt.Columns.Add("Дата");
             dt.Columns.Add("Неделя");
             dt.Columns.Add("Тема");
+            dt.Columns.Add("Проект");
+            dt.Columns.Add("ITP link");
             // JQL-запрос для получения задач с worklog за период
             var worklogJQL = $"project in (ERP, AT) and worklogDate >= '{startDate:yyyy-MM-dd}' and worklogDate <= '{endDate:yyyy-MM-dd}'";
             IssueSearchOptions options = new(worklogJQL)
@@ -335,14 +337,29 @@ namespace SDP2Jira
             };
             // Получаем связанную инициативу
             var linkedIssueLink = parentIssue.GetIssueLinksAsync().Result
-                .FirstOrDefault(x => x.InwardIssue.Key.ToString().StartsWith("ITP") || x.OutwardIssue.Key.ToString().StartsWith("ITP"));
-            Issue linkedIssue = linkedIssueLink != null ? 
-                linkedIssueLink.InwardIssue.Key.ToString().StartsWith("ITP") ? 
-                linkedIssueLink.InwardIssue : 
-                linkedIssueLink.OutwardIssue : 
+                .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP");
+            Issue linkedIssue = linkedIssueLink != null ?
+                linkedIssueLink.InwardIssue.Project == "ITP" ?
+                linkedIssueLink.InwardIssue :
+                linkedIssueLink.OutwardIssue :
                 null;
-            string issueKey = linkedIssue != null ? linkedIssue.Key.ToString() : parentIssue.Key.ToString();
-            string issueSummary = linkedIssue != null ? linkedIssue.Summary : parentIssue.Summary;
+            //Проверяем Epic
+            var epicLink = issue.CustomFields["Epic Link"]?.Values.GetValue(0).ToString(); // по имени поля
+            var epicIssue = !string.IsNullOrEmpty(epicLink) ? jira.Issues.GetIssueAsync(epicLink).Result : null;
+            // Получаем связанную инициативу по Epic
+            var linkedEpicIssueLink = epicIssue != null ? epicIssue.GetIssueLinksAsync().Result
+                .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP") : null;
+            var linkedEpicIssue = linkedEpicIssueLink != null ?
+                linkedEpicIssueLink.InwardIssue.Project == "ITP" ?
+                linkedEpicIssueLink.InwardIssue :
+                linkedEpicIssueLink.OutwardIssue :
+                null;
+            string issueKey = linkedIssue != null ? linkedIssue.Key.ToString() :
+                linkedEpicIssue != null ? linkedEpicIssue.Key.ToString() :
+                parentIssue.Key.ToString();
+            string issueSummary = linkedIssue != null ? linkedIssue.Summary :
+                linkedEpicIssue != null ? linkedEpicIssue.Summary :
+                parentIssue.Summary;
             // Получаем все worklog для задачи
             var worklogs = issue.GetWorklogsAsync().Result.ToList();
             foreach (var worklog in worklogs)
@@ -359,7 +376,9 @@ namespace SDP2Jira
                                     worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
                                     wlDate,
                                     week,
-                                    issueSummary.Length < 125 ? issueSummary : issueSummary[..125]
+                                    issueSummary.Length < 125 ? issueSummary : issueSummary[..125],
+                                    issue.Project,
+                                    issueKey.StartsWith("ITP") ? "да" : "нет"
                                    );
                     }
             }
