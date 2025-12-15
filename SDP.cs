@@ -15,7 +15,7 @@ namespace SDP2Jira
                 public string Id { get; set; }
                 public string Name { get; set; }
                 public string Email_id { get; set; }
-                public string Udf_pick_901 { get; set; }
+                public string Udf_pick_615 { get; set; }
             }
             public class Attachment
             {

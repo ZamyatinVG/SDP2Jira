@@ -165,13 +165,13 @@ namespace SDP2Jira
                 issue.Summary = summary.Length > 255 ? summary[..255] : summary;
                 if (project == "ERP")
                 {
-                    if (request.Udf_fields.Udf_pick_901 == null)
+                    if (request.Udf_fields.Udf_pick_615 == null)
                     {
-                        Logger.Error("Field \"Direction\" is not filled!");
+                        Logger.Error("Field \"Business unit\" is not filled!");
                         return;
                     }
                     else
-                        issue["Направление"] = request.Udf_fields.Udf_pick_901;
+                        issue["Business unit"] = request.Udf_fields.Udf_pick_615;
                     issue.Type = "10206"; //Analysis
                 }
                 else
@@ -371,7 +371,7 @@ namespace SDP2Jira
                     lock (lockObject)
                     {
                         dt.Rows.Add($"{jiraServer}/browse/{issueKey}",
-                                    parentIssue.CustomFields["Направление"]?.Values.GetValue(0),
+                                    parentIssue.CustomFields["Business unit"]?.Values.GetValue(0),
                                     issueType,
                                     worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
                                     wlDate,
