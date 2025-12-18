@@ -303,7 +303,7 @@ namespace SDP2Jira
             dt.Columns.Add("Проект");
             dt.Columns.Add("ITP link");
             // JQL-запрос для получения задач с worklog за период
-            var worklogJQL = $"project in (ERP, AT) and worklogDate >= '{startDate:yyyy-MM-dd}' and worklogDate <= '{endDate:yyyy-MM-dd}'";
+            var worklogJQL = $"project in (ERP, AT, ITP) and worklogDate >= '{startDate:yyyy-MM-dd}' and worklogDate <= '{endDate:yyyy-MM-dd}'";
             IssueSearchOptions options = new(worklogJQL)
             {
                 MaxIssuesPerRequest = 10000
@@ -329,35 +329,43 @@ namespace SDP2Jira
         {
             string issueType = issue.Type.ToString();
             Issue parentIssue = issueType == "Подзадача" ? jira.Issues.GetIssueAsync(issue.ParentIssueKey).Result : issue;
-            issueType = parentIssue.Type.ToString() switch
-            {
-                "Улучшение" => "CHANGE",
-                "Тех.долг" => "TECH DEBT",
-                _ => "RUN",
-            };
-            // Получаем связанную инициативу
-            var linkedIssueLink = parentIssue.GetIssueLinksAsync().Result
-                .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP");
-            Issue linkedIssue = linkedIssueLink != null ?
-                linkedIssueLink.InwardIssue.Project == "ITP" ?
-                linkedIssueLink.InwardIssue :
-                linkedIssueLink.OutwardIssue :
-                null;
-            //Проверяем Epic
-            var epicLink = issue.CustomFields["Epic Link"]?.Values.GetValue(0).ToString(); // по имени поля
-            var epicIssue = !string.IsNullOrEmpty(epicLink) ? jira.Issues.GetIssueAsync(epicLink).Result : null;
-            // Получаем связанную инициативу по Epic
-            var linkedEpicIssueLink = epicIssue != null ? epicIssue.GetIssueLinksAsync().Result
-                .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP") : null;
-            var linkedEpicIssue = linkedEpicIssueLink != null ?
-                linkedEpicIssueLink.InwardIssue.Project == "ITP" ?
-                linkedEpicIssueLink.InwardIssue :
-                linkedEpicIssueLink.OutwardIssue :
-                null;
-            string issueKey = linkedIssue != null ? linkedIssue.Key.ToString() :
+            Issue linkedIssue = null, linkedEpicIssue = null;
+            if (issue.Project == "ITP")
+                issueType = "CHANGE";
+            else
+            { 
+                issueType = parentIssue.Type.ToString() switch
+                {
+                    "Улучшение" => "CHANGE",
+                    "Тех.долг" => "TECH DEBT",
+                    _ => "RUN",
+                };
+                // Получаем связанную инициативу
+                var linkedIssueLink = parentIssue.GetIssueLinksAsync().Result
+                    .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP");
+                linkedIssue = linkedIssueLink != null ?
+                    linkedIssueLink.InwardIssue.Project == "ITP" ?
+                    linkedIssueLink.InwardIssue :
+                    linkedIssueLink.OutwardIssue :
+                    null;
+                //Проверяем Epic
+                var epicLink = issue.CustomFields["Epic Link"]?.Values.GetValue(0).ToString(); // по имени поля
+                var epicIssue = !string.IsNullOrEmpty(epicLink) ? jira.Issues.GetIssueAsync(epicLink).Result : null;
+                // Получаем связанную инициативу по Epic
+                var linkedEpicIssueLink = epicIssue?.GetIssueLinksAsync().Result
+                    .FirstOrDefault(x => x.InwardIssue.Project == "ITP" || x.OutwardIssue.Project == "ITP");
+                linkedEpicIssue = linkedEpicIssueLink != null ?
+                    linkedEpicIssueLink.InwardIssue.Project == "ITP" ?
+                    linkedEpicIssueLink.InwardIssue :
+                    linkedEpicIssueLink.OutwardIssue :
+                    null;
+            }
+            string issueKey = issue.Project == "ITP" ? issue.Key.ToString() :
+                linkedIssue != null ? linkedIssue.Key.ToString() :
                 linkedEpicIssue != null ? linkedEpicIssue.Key.ToString() :
                 parentIssue.Key.ToString();
-            string issueSummary = linkedIssue != null ? linkedIssue.Summary :
+            string issueSummary = issue.Project == "ITP" ? issue.Summary :
+                linkedIssue != null ? linkedIssue.Summary :
                 linkedEpicIssue != null ? linkedEpicIssue.Summary :
                 parentIssue.Summary;
             // Получаем все worklog для задачи
@@ -365,7 +373,7 @@ namespace SDP2Jira
             foreach (var worklog in worklogs)
             {
                 DateTime wlDate = worklog.StartDate.Value.Date;
-                string week = wlDate.Year.ToString() + "_" + ISOWeek.GetWeekOfYear(wlDate).ToString("D2");
+                string week = ISOWeek.GetYear(wlDate).ToString() + "_" + ISOWeek.GetWeekOfYear(wlDate).ToString("D2");
                 if ((supportList.Contains(worklog.AuthorUser.DisplayName) || string.IsNullOrEmpty(supportList[0])) &&
                     wlDate >= startDate && wlDate <= endDate)
                     lock (lockObject)
@@ -422,8 +430,12 @@ namespace SDP2Jira
         }
         private static void ProcessIssueITP(Issue issue, DataTable dt)
         {
+            List<Issue> linkedIssueList = new()
+            {
+                issue
+            };
             //Ищем связанные с ITP задачи
-            var linkedIssueList = issue.GetIssueLinksAsync().Result
+            linkedIssueList = issue.GetIssueLinksAsync().Result
                 .Where(x => !(x.InwardIssue.Project == "ITP") || !(x.OutwardIssue.Project == "ITP"))
                 .Select(x => x.InwardIssue.Project == "ITP" ? x.OutwardIssue : x.InwardIssue).ToList();
             //Если подвязан эпик, то добавляем задачи из него
