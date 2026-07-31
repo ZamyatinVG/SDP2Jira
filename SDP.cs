@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 using RestSharp;
@@ -44,9 +45,14 @@ namespace SDP2Jira
                         description = "";
                     else
                     {
-                        Attachment attachment = new();
                         description = description.Substring(index + 9);
                         index = description.IndexOf("\"");
+                        if (index < 0)
+                        {
+                            description = "";
+                            continue;
+                        }
+                        Attachment attachment = new();
                         attachment.Content_url = description.Substring(0, index);
                         index = attachment.Content_url.LastIndexOf("/");
                         attachment.Name = attachment.Content_url.Substring(index + 1);
@@ -95,6 +101,11 @@ namespace SDP2Jira
         }
         public static RequestList requestList;
         public static NoteList noteList;
+        private static void EnsureSuccess(IRestResponse response, string context)
+        {
+            if (!response.IsSuccessful)
+                throw new Exception($"{context} failed: HTTP {(int)response.StatusCode} {response.StatusCode}. {response.Content}");
+        }
         public static Request GetRequest(string request_id)
         {
             var client = new RestClient($"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests/{request_id}")
@@ -104,6 +115,7 @@ namespace SDP2Jira
             var request = new RestRequest(Method.GET);
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
             IRestResponse response = client.Execute(request);
+            EnsureSuccess(response, $"Getting request {request_id} from SDP");
             var requestMessage = JsonConvert.DeserializeObject<RequestMessage>(response.Content);
             return requestMessage.Request;
         }
@@ -115,12 +127,14 @@ namespace SDP2Jira
             };
             var request = new RestRequest(Method.GET);
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
-            byte[] response = client.DownloadData(request);
+            IRestResponse response = client.Execute(request);
+            EnsureSuccess(response, $"Downloading file {filename} from SDP");
+            byte[] data = response.RawBytes;
             if (!Directory.Exists("files\\"))
                 Directory.CreateDirectory("files\\");
             if (Path.GetExtension(filename) == string.Empty)
-                filename += GetFileExtension(response);
-            File.WriteAllBytes("files\\" + filename, response);
+                filename += GetFileExtension(data);
+            File.WriteAllBytes("files\\" + filename, data);
             return filename;
         }
         public static string GetFileExtension(byte[] fileBytes)
@@ -138,22 +152,17 @@ namespace SDP2Jira
         }
         public static string CloseRequest(string request_id, out string status_code)
         {
-            var client = new RestClient(@$"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests/{request_id}?format=json&input_data=
-                                        {{
-                                            ""request"": 
-                                            {{
-                                                ""status"": 
-                                                {{
-                                                    ""id"": ""303""
-                                                }}
-                                            }}
-                                        }}")
+            var client = new RestClient($"{ConfigurationManager.AppSettings["SDP_SERVER"]}/api/v3/requests/{request_id}")
             {
                 Timeout = -1
             };
             var request = new RestRequest(Method.PUT);
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
+            request.AddParameter("format", "json", ParameterType.QueryString);
+            string inputData = JsonConvert.SerializeObject(new { request = new { status = new { id = "303" } } });
+            request.AddParameter("input_data", inputData, ParameterType.QueryString);
             IRestResponse response = client.Execute(request);
+            EnsureSuccess(response, $"Closing request {request_id} in SDP");
             var requestMessage = JsonConvert.DeserializeObject<RequestMessage>(response.Content);
             status_code = requestMessage.Response_status.Status_code;
             if (status_code == "2000")
@@ -174,6 +183,7 @@ namespace SDP2Jira
             var request = new RestRequest(Method.GET);
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
             IRestResponse response = client.Execute(request);
+            EnsureSuccess(response, $"Getting notes for request {request_id}");
             noteList = JsonConvert.DeserializeObject<NoteList>(response.Content);
         }
         public static Note GetNote(string request_id, string note_id)
@@ -185,6 +195,7 @@ namespace SDP2Jira
             var request = new RestRequest(Method.GET);
             request.AddHeader("TECHNICIAN_KEY", ConfigurationManager.AppSettings["TECHNICIAN_KEY"]);
             IRestResponse response = client.Execute(request);
+            EnsureSuccess(response, $"Getting note {note_id} for request {request_id}");
             var noteMessage = JsonConvert.DeserializeObject<NoteMessage>(response.Content);
             return noteMessage.note;
         }

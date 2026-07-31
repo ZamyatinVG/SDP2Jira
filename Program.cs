@@ -350,7 +350,7 @@ namespace SDP2Jira
                     linkedIssueLink.OutwardIssue :
                     null;
                 //Проверяем Epic
-                var epicLink = issue.CustomFields["Epic Link"]?.Values.GetValue(0).ToString(); // по имени поля
+                var epicLink = issue.CustomFields["Epic Link"]?.Values?.FirstOrDefault(); // по имени поля
                 var epicIssue = !string.IsNullOrEmpty(epicLink) ? jira.Issues.GetIssueAsync(epicLink).Result : null;
                 // Получаем связанную инициативу по Epic
                 var linkedEpicIssueLink = epicIssue?.GetIssueLinksAsync().Result
@@ -380,7 +380,7 @@ namespace SDP2Jira
                     lock (lockObject)
                     {
                         dt.Rows.Add($"{jiraServer}/browse/{issueKey}",
-                                    parentIssue.CustomFields["Business unit"]?.Values.GetValue(0),
+                                    parentIssue.CustomFields["Business unit"]?.Values?.FirstOrDefault(),
                                     issueType,
                                     worklog.AuthorUser.DisplayName, Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
                                     wlDate,
@@ -431,14 +431,14 @@ namespace SDP2Jira
         }
         private static void ProcessIssueITP(Issue issue, DataTable dt)
         {
-            List<Issue> linkedIssueList = new()
-            {
+            List<Issue> linkedIssueList =
+            [
                 issue
-            };
+            ];
             //Ищем связанные с ITP задачи
-            linkedIssueList = issue.GetIssueLinksAsync().Result
+            linkedIssueList.AddRange(issue.GetIssueLinksAsync().Result
                 .Where(x => !(x.InwardIssue.Project == "ITP") || !(x.OutwardIssue.Project == "ITP"))
-                .Select(x => x.InwardIssue.Project == "ITP" ? x.OutwardIssue : x.InwardIssue).ToList();
+                .Select(x => x.InwardIssue.Project == "ITP" ? x.OutwardIssue : x.InwardIssue));
             //Если подвязан эпик, то добавляем задачи из него
             var linkedEpicIssueList = new List<Issue>();
             foreach (var linkedIssue in linkedIssueList.Where(x => x.Type.Name == "Эпик"))
@@ -463,18 +463,18 @@ namespace SDP2Jira
                     lock (lockObject)
                     {
                         dt.Rows.Add($"{jiraServer}/browse/{issue.Key}",
-                                    issue.CustomFields["Business unit"]?.Values.GetValue(0),
+                                    issue.CustomFields["Business unit"]?.Values?.FirstOrDefault(),
                                     linkedIssue.Key,
                                     issue.Status.Name,
                                     Math.Round(TimeSpan.FromSeconds(worklog.TimeSpentInSeconds).TotalHours, 2),
                                     linkedIssue.Project,
                                     worklog.StartDate.Value.Date,
                                     issue.Summary.Length < 125 ? issue.Summary : issue.Summary[..125],
-                                    issue.CustomFields["Тип цели"]?.Values.GetValue(0),
-                                    issue.CustomFields["Эффект для компании"]?.Values.GetValue(0),
-                                    issue.CustomFields["Оценка Галактики"]?.Values.GetValue(0),
-                                    issue.CustomFields["Коэффициент"]?.Values.GetValue(0),
-                                    issue.CustomFields["Приведённая EBITDA"]?.Values.GetValue(0)
+                                    issue.CustomFields["Тип цели"]?.Values?.FirstOrDefault(),
+                                    issue.CustomFields["Эффект для компании"]?.Values?.FirstOrDefault(),
+                                    issue.CustomFields["Оценка Галактики"]?.Values?.FirstOrDefault(),
+                                    issue.CustomFields["Коэффициент"]?.Values?.FirstOrDefault(),
+                                    issue.CustomFields["Приведённая EBITDA"]?.Values?.FirstOrDefault()
                                    );
                     }
             }
