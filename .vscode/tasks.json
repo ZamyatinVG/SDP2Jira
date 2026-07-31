@@ -1,0 +1,36 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-debug",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\SDP2Jira.csproj",
+                "-restore",
+                "-t:Build",
+                "-p:Configuration=Debug",
+                "-nologo"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "build-release",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}\\SDP2Jira.csproj",
+                "-restore",
+                "-t:Build",
+                "-p:Configuration=Release",
+                "-nologo"
+            ],
+            "group": "build",
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "SDP2Jira (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-debug",
+            "program": "${workspaceFolder}/bin/Debug/net8.0/SDP2Jira.exe",
+            "args": "${input:sdp2jiraArgs}",
+            "cwd": "${workspaceFolder}/bin/Debug/net8.0",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "SDP2Jira (Release)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-release",
+            "program": "${workspaceFolder}/bin/Release/net8.0/SDP2Jira.exe",
+            "args": "${input:sdp2jiraArgs}",
+            "cwd": "${workspaceFolder}/bin/Release/net8.0",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ],
+    "inputs": [
+        {
+            "id": "sdp2jiraArgs",
+            "type": "promptString",
+            "description": "Аргументы командной строки SDP2Jira.exe (например: -r 12345, -wl, -itp)",
+            "default": "-r 12345"
+        }
+    ]
+}
