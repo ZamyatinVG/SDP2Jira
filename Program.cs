@@ -64,11 +64,11 @@ namespace SDP2Jira
             login = sr.Properties["samaccountname"][0].ToString();
             return true;
         }
-        private static async void AddAttachmentsAsync(Issue issue, string path)
+        private static void AddAttachments(Issue issue, string path)
         {
             byte[] data = File.ReadAllBytes("files\\" + path);
             UploadAttachmentInfo info = new(path, data);
-            await issue.AddAttachmentAsync(new UploadAttachmentInfo [] { info });
+            issue.AddAttachmentAsync(new UploadAttachmentInfo [] { info }).GetAwaiter().GetResult();
         }
         private static void Main(string[] args)
         {
@@ -255,7 +255,7 @@ namespace SDP2Jira
                         }
                         try
                         {
-                            AddAttachmentsAsync(issue, attachment.Name);
+                            AddAttachments(issue, attachment.Name);
                             Logger.Info($"File {attachment.Name} added to issue {issue.Key}.");
                         }
                         catch (Exception ex)
@@ -272,8 +272,16 @@ namespace SDP2Jira
                     foreach (SDP.Request.Attachment attachment in request.Attachments)
                         if (attachment.Type.ToString() == pair.Key)
                             pair.Value.Body += $"\r\n[^{attachment.Name}]";
-                    issue.AddCommentAsync(pair.Value);
-                    Logger.Info($"Note {pair.Key} added.");
+                    try
+                    {
+                        issue.AddCommentAsync(pair.Value).GetAwaiter().GetResult();
+                        Logger.Info($"Note {pair.Key} added.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Error adding note {pair.Key} to issue {issue.Key}!\r\n" + ex.Message);
+                        warning++;
+                    }
                 }
                 //Закрытие заявки
                 string request_result = SDP.CloseRequest(request.Id, out string status_code);
