@@ -13,7 +13,7 @@ dotnet build SDP2Jira.csproj -c Debug
 dotnet build SDP2Jira.csproj -c Release
 ```
 
-The `.vscode/tasks.json` `build-debug`/`build-release` tasks wrap these. Output lands in `bin/<Configuration>/net8.0/`.
+The `.vscode/tasks.json` `build-debug`/`build-release` tasks wrap these. Output lands in `bin/<Configuration>/net8.0-windows/`.
 
 There is no test project and no lint config — this is a small internal ops tool, not a library.
 
@@ -21,7 +21,7 @@ There is no test project and no lint config — this is a small internal ops too
 
 ## Debugging in VS Code
 
-`.vscode/launch.json` has two configurations, **SDP2Jira (Debug)** and **SDP2Jira (Release)**, each wired to its matching build task and to `bin/<Configuration>/net8.0/SDP2Jira.exe`. Both prompt for the CLI args to run with (e.g. `-r 12345`, `-wl`, `-itp`) via an input box — there's no default mode, so you must supply one.
+`.vscode/launch.json` has two configurations, **SDP2Jira (Debug)** and **SDP2Jira (Release)**, each wired to its matching build task and to `bin/<Configuration>/net8.0-windows/SDP2Jira.exe`. Both prompt for the CLI args to run with (e.g. `-r 12345`, `-wl`, `-itp`) via an input box — there's no default mode, so you must supply one.
 
 ## Running
 
@@ -62,4 +62,5 @@ Key flows for the report modes (`-wl` / `-itp`, in `GetWorkLog`/`ProcessIssue` a
 - Custom field names/IDs (`"Номер заявки SD"`, `"Business unit"`, `"Epic Link"`, issue type ids `10206`/`10301`, status id `303`) are specific to the Askona Jira/SDP instances and will not resolve against a different Jira/SDP install.
 - Follow `CHANGELOG.md` conventions (Keep a Changelog style, Russian entries) when making notable changes, and bump `<Version>` in `SDP2Jira.csproj` accordingly.
 - Migrated from net6.0 to net8.0; `NLog`, `System.Configuration.ConfigurationManager`, and `System.DirectoryServices` were bumped to net8-era versions (5.x/8.0.0) at the same time. `Atlassian.SDK` and `RestSharp` were left as-is (still netstandard2.0, resolve fine under net8.0).
+- `TargetFramework` is `net8.0-windows`, not plain `net8.0`, because `IsLoginExists` (AD lookup) uses `System.DirectoryServices` (`DirectoryEntry`/`DirectorySearcher`), which is Windows-only; the `-windows` TFM tells the platform-compatibility analyzer the whole app is Windows-only, silencing `CA1416` warnings instead of suppressing them. This doesn't require the Windows Desktop SDK/workload — it still builds with plain `dotnet build`.
 - The `Microsoft.Office.Interop.Excel` COM reference was removed in favor of `ClosedXML`, specifically so the project builds with plain `dotnet build`/`dotnet run` — the COM reference's `ResolveComReference` MSBuild task only worked under the full-framework MSBuild bundled with Visual Studio, not the dotnet-CLI one. Don't reintroduce Excel Interop without re-checking this constraint.

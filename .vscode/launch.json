@@ -6,9 +6,9 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build-debug",
-            "program": "${workspaceFolder}/bin/Debug/net8.0/SDP2Jira.exe",
+            "program": "${workspaceFolder}/bin/Debug/net8.0-windows/SDP2Jira.exe",
             "args": "${input:sdp2jiraArgs}",
-            "cwd": "${workspaceFolder}/bin/Debug/net8.0",
+            "cwd": "${workspaceFolder}/bin/Debug/net8.0-windows",
             "console": "integratedTerminal",
             "stopAtEntry": false
         },
@@ -17,9 +17,9 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build-release",
-            "program": "${workspaceFolder}/bin/Release/net8.0/SDP2Jira.exe",
+            "program": "${workspaceFolder}/bin/Release/net8.0-windows/SDP2Jira.exe",
             "args": "${input:sdp2jiraArgs}",
-            "cwd": "${workspaceFolder}/bin/Release/net8.0",
+            "cwd": "${workspaceFolder}/bin/Release/net8.0-windows",
             "console": "integratedTerminal",
             "stopAtEntry": false
         }
