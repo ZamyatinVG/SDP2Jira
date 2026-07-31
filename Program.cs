@@ -105,23 +105,30 @@ namespace SDP2Jira
                 Logger.Info("Program closed. Invalid arguments.");
                 return;
             }
-            switch (args[0])
+            try
             {
-                case "-wl":
-                    GetWorkLog();
-                    break;
-                case "-itp":
-                    GetWorkLogITP();
-                    break;
-                case "-r" when args.Length > 1:
-                    string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
-                        ? args[3]
-                        : "ERP";
-                    SyncRequest(args[1], projectKey);
-                    break;
-                default:
-                    Logger.Info("Invalid arguments.");
-                    break;
+                switch (args[0])
+                {
+                    case "-wl":
+                        GetWorkLog();
+                        break;
+                    case "-itp":
+                        GetWorkLogITP();
+                        break;
+                    case "-r" when args.Length > 1:
+                        string projectKey = args.Length == 4 && args[2] == "-proj" && !string.IsNullOrEmpty(args[3])
+                            ? args[3]
+                            : "ERP";
+                        SyncRequest(args[1], projectKey);
+                        break;
+                    default:
+                        Logger.Info("Invalid arguments.");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Unhandled error while running {args[0]}!\r\n" + ex.Message);
             }
             Logger.Info("Program closed.");
         }
@@ -340,7 +347,14 @@ namespace SDP2Jira
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = threadCount };
             Parallel.ForEach(issues, parallelOptions, issue =>
             {
-                ProcessIssue(issue, dt);
+                try
+                {
+                    ProcessIssue(issue, dt);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Ошибка обработки задачи {issue.Key} для отчета worklog, задача пропущена!\r\n" + ex.Message);
+                }
                 // Атомарно увеличиваем счетчик
                 int currentCount = Interlocked.Increment(ref processedCount);
                 if (currentCount % 100 == 0)
@@ -443,7 +457,14 @@ namespace SDP2Jira
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = threadCount };
             Parallel.ForEach(issues, parallelOptions, issue =>
             {
-                ProcessIssueITP(issue, dt);
+                try
+                {
+                    ProcessIssueITP(issue, dt);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Ошибка обработки задачи {issue.Key} для отчета ITP, задача пропущена!\r\n" + ex.Message);
+                }
                 // Атомарно увеличиваем счетчик
                 int currentCount = Interlocked.Increment(ref processedCount);
                 if (currentCount % 10 == 0)
@@ -457,27 +478,31 @@ namespace SDP2Jira
             [
                 issue
             ];
+            // Отслеживаем уже добавленные задачи, чтобы не учесть одну и ту же задачу дважды
+            var seenKeys = new HashSet<string> { issue.Key.ToString() };
+            void AddUnique(IEnumerable<Issue> items)
+            {
+                foreach (var item in items)
+                    if (seenKeys.Add(item.Key.ToString()))
+                        linkedIssueList.Add(item);
+            }
             //Ищем связанные с ITP задачи
-            linkedIssueList.AddRange(issue.GetIssueLinksAsync().Result
+            AddUnique(issue.GetIssueLinksAsync().Result
                 .Where(x => !(x.InwardIssue.Project == "ITP") || !(x.OutwardIssue.Project == "ITP"))
                 .Select(x => x.InwardIssue.Project == "ITP" ? x.OutwardIssue : x.InwardIssue));
             //Если подвязан эпик, то добавляем задачи из него
-            var linkedEpicIssueList = new List<Issue>();
-            foreach (var linkedIssue in linkedIssueList.Where(x => x.Type.Name == "Эпик"))
+            foreach (var linkedIssue in linkedIssueList.Where(x => x.Type.Name == "Эпик").ToList())
             {
                 string epicJQL = $"\"Epic Link\" = {linkedIssue.Key}";
                 var epicIssues = jira.Issues.GetIssuesFromJqlAsync(new IssueSearchOptions(epicJQL)
                 {
                     MaxIssuesPerRequest = 100
                 }).Result.ToList();
-                linkedEpicIssueList.AddRange(epicIssues);
+                AddUnique(epicIssues);
             }
-            linkedIssueList.AddRange(linkedEpicIssueList);
             //Если есть подзадачи, добавляем их
-            var linkedSubIssueList = new List<Issue>();
-            foreach (var linkedIssue in linkedIssueList)
-                linkedSubIssueList.AddRange(linkedIssue.GetSubTasksAsync().Result);
-            linkedIssueList.AddRange(linkedSubIssueList);
+            foreach (var linkedIssue in linkedIssueList.ToList())
+                AddUnique(linkedIssue.GetSubTasksAsync().Result);
             foreach (var linkedIssue in linkedIssueList)
             {
                 var worklogs = linkedIssue.GetWorklogsAsync().Result.ToList();
