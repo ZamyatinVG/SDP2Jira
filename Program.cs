@@ -35,9 +35,9 @@ namespace SDP2Jira
             // Декодирование HTML-символов
             var text = System.Net.WebUtility.HtmlDecode(html);
             // Удаление пробелов между тегами
-            text = Regex.Replace(text, @"(>|$)(s|\n|\r)+<", "><");
+            text = Regex.Replace(text, @"(>|$)\s+<", "><");
             // Замена <br> на переносы строк
-            text = Regex.Replace(text, @"<brs*/?>", Environment.NewLine, RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"<br\s*/?>", Environment.NewLine, RegexOptions.IgnoreCase);
             // Удаление всех остальных тегов
             text = Regex.Replace(text, @"<[^>]+>", string.Empty);
             return text.Trim(); // Удаляем лишние пробелы в начале и конце
@@ -45,24 +45,37 @@ namespace SDP2Jira
         private static bool IsLoginExists(string ldap, string mail, string displayname, out string login)
         {
             login = string.Empty;
-            using DirectoryEntry de = new(ldap);
-            using DirectorySearcher ds = new(de);
-            ds.Filter = string.IsNullOrWhiteSpace(mail)
-                ? $"(displayname={displayname})"
-                : $"(mail={mail})";
-            ds.PropertiesToLoad.Add("samaccountname");
-            SearchResult sr = ds.FindOne();
-            // Если результат не найден, возвращаем false
-            if (sr == null || sr.Properties["samaccountname"].Count == 0)
+            // Без email и без имени построить фильтр поиска невозможно
+            if (string.IsNullOrWhiteSpace(mail) && string.IsNullOrWhiteSpace(displayname))
+                return false;
+            try
             {
-                // Если ldap - это LDAP_ASKONA, выполняем рекурсивный вызов
+                using DirectoryEntry de = new(ldap);
+                using DirectorySearcher ds = new(de);
+                ds.Filter = string.IsNullOrWhiteSpace(mail)
+                    ? $"(displayname={displayname})"
+                    : $"(mail={mail})";
+                ds.PropertiesToLoad.Add("samaccountname");
+                SearchResult sr = ds.FindOne();
+                // Если результат не найден, возвращаем false
+                if (sr == null || sr.Properties["samaccountname"].Count == 0)
+                {
+                    // Если ldap - это LDAP_ASKONA, выполняем рекурсивный вызов
+                    if (ldap == LDAP_ASKONA)
+                        return IsLoginExists(LDAP_PMT, mail, displayname, out login);
+                    return false;
+                }
+                // Получаем логин
+                login = sr.Properties["samaccountname"][0].ToString();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"LDAP lookup error on {ldap} (mail={mail}, displayname={displayname})!\r\n" + ex.Message);
                 if (ldap == LDAP_ASKONA)
                     return IsLoginExists(LDAP_PMT, mail, displayname, out login);
                 return false;
             }
-            // Получаем логин
-            login = sr.Properties["samaccountname"][0].ToString();
-            return true;
         }
         private static void AddAttachments(Issue issue, string path)
         {
@@ -149,9 +162,10 @@ namespace SDP2Jira
                     Logger.Error("Could not determine specialist login!");
                     return;
                 }
-            if (jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id) && x.Created >= new DateTime(2025, 2, 1)).Any())
+            var existingIssue = jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id) && x.Created >= new DateTime(2025, 2, 1)).FirstOrDefault();
+            if (existingIssue != null)
             {
-                Logger.Error($"Jira already has issue {jira.Issues.Queryable.Where(x => x["Номер заявки SD"] == new LiteralMatch(request.Id)).FirstOrDefault().Key} for request {request.Id}!");
+                Logger.Error($"Jira already has issue {existingIssue.Key} for request {request.Id}!");
             }
             else
             {

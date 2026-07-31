@@ -55,7 +55,7 @@ namespace SDP2Jira
                         Attachment attachment = new();
                         attachment.Content_url = description.Substring(0, index);
                         index = attachment.Content_url.LastIndexOf("/");
-                        attachment.Name = attachment.Content_url.Substring(index + 1);
+                        attachment.Name = attachment.Content_url.Substring(index + 1).Split('?', '#')[0];
                         attachment.Type = type;
                         if (attachment.Name != string.Empty)
                             Attachments.Add(attachment);
