@@ -4,13 +4,12 @@
         {
             "label": "build-debug",
             "type": "process",
-            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "command": "dotnet",
             "args": [
+                "build",
                 "${workspaceFolder}\\SDP2Jira.csproj",
-                "-restore",
-                "-t:Build",
-                "-p:Configuration=Debug",
-                "-nologo"
+                "-c",
+                "Debug"
             ],
             "group": {
                 "kind": "build",
@@ -21,13 +20,12 @@
         {
             "label": "build-release",
             "type": "process",
-            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "command": "dotnet",
             "args": [
+                "build",
                 "${workspaceFolder}\\SDP2Jira.csproj",
-                "-restore",
-                "-t:Build",
-                "-p:Configuration=Release",
-                "-nologo"
+                "-c",
+                "Release"
             ],
             "group": "build",
             "problemMatcher": "$msCompile"

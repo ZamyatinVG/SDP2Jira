@@ -8,17 +8,16 @@ A .NET 8 console app (single project, no test suite) that bridges Askona's Manag
 
 ## Build
 
-The project has a `Microsoft.Office.Interop.Excel` COM reference (`ResolveComReference`), which the .NET Core/SDK-style MSBuild bundled with the `dotnet` CLI **does not support** (`dotnet build` fails with `MSB4803`). Build with the full-framework MSBuild from Visual Studio instead:
-
 ```
-"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" SDP2Jira.csproj -restore -t:Build -p:Configuration=Debug
+dotnet build SDP2Jira.csproj -c Debug
+dotnet build SDP2Jira.csproj -c Release
 ```
 
-(swap `Debug`→`Release` as needed; adjust the path if VS is installed under a different edition/location). The `.vscode/tasks.json` `build-debug`/`build-release` tasks wrap this exact command. Output lands in `bin/<Configuration>/net8.0/`.
+The `.vscode/tasks.json` `build-debug`/`build-release` tasks wrap these. Output lands in `bin/<Configuration>/net8.0/`.
 
 There is no test project and no lint config — this is a small internal ops tool, not a library.
 
-`ExportToExcel` (used by `-wl`/`-itp`) only works on Windows with Excel installed. Running elsewhere would still work for the `-r` (issue-creation) path, which doesn't touch Excel — but the build itself is Windows-only regardless, because of the COM reference.
+`ExportToExcel` (used by `-wl`/`-itp`) generates the workbook with `ClosedXML` (pure .NET, no Office/Excel installation or COM required) and then opens the saved file via `Process.Start(..., UseShellExecute = true)`, which launches whatever app is associated with `.xlsx` on the machine (normally Excel, if installed) — but nothing about the build or the export itself requires Excel to be present.
 
 ## Debugging in VS Code
 
@@ -51,7 +50,7 @@ Key flows to understand before changing `SyncRequest` (the `-r` path):
 4. SDP notes become Jira comments; SDP inline `<img>` attachments and file attachments are downloaded (`SDP.DowloadFile` into a local `files\` dir) and re-uploaded to the Jira issue, then deleted locally.
 5. On success, the SDP request is closed via `SDP.CloseRequest` (hardcoded status id `303`).
 
-Key flows for the report modes (`-wl` / `-itp`, in `GetWorkLog`/`ProcessIssue` and `GetWorkLogITP`/`ProcessIssueITP`): both pull issues via Jira JQL (`GetIssuesFromJqlAsync`), then fan out per-issue work across a fixed thread pool (`Parallel.ForEach`, `threadCount = 5`) to fetch worklogs/links/subtasks concurrently, aggregating rows into a shared `DataTable` under `lockObject`, then hand the `DataTable` to `ExportToExcel` (COM interop, builds a real Excel workbook with header formatting/autofilter/autofit and leaves it open/visible).
+Key flows for the report modes (`-wl` / `-itp`, in `GetWorkLog`/`ProcessIssue` and `GetWorkLogITP`/`ProcessIssueITP`): both pull issues via Jira JQL (`GetIssuesFromJqlAsync`), then fan out per-issue work across a fixed thread pool (`Parallel.ForEach`, `threadCount = 5`) to fetch worklogs/links/subtasks concurrently, aggregating rows into a shared `DataTable` under `lockObject`, then hand the `DataTable` to `ExportToExcel` (`ClosedXML.Worksheets.Add(DataTable, sheetName)`, which builds it as a native Excel Table — header row bold/centered and the autofilter come from the table style, not manual formatting; don't also call `SetAutoFilter()` on that range, it's already filtered and will throw). The workbook is saved under `reports\` (created next to the exe if missing) as `worklog_<timestamp>.xlsx`, then opened via `Process.Start(UseShellExecute = true)`.
 
 `-wl` classifies each issue's effective type by walking up to its parent (subtask → parent) and mapping parent issue type → `CHANGE`/`TECH DEBT`/`RUN`, and separately tries to resolve a linked ITP initiative either directly or via the issue's Epic Link.
 
@@ -63,3 +62,4 @@ Key flows for the report modes (`-wl` / `-itp`, in `GetWorkLog`/`ProcessIssue` a
 - Custom field names/IDs (`"Номер заявки SD"`, `"Business unit"`, `"Epic Link"`, issue type ids `10206`/`10301`, status id `303`) are specific to the Askona Jira/SDP instances and will not resolve against a different Jira/SDP install.
 - Follow `CHANGELOG.md` conventions (Keep a Changelog style, Russian entries) when making notable changes, and bump `<Version>` in `SDP2Jira.csproj` accordingly.
 - Migrated from net6.0 to net8.0; `NLog`, `System.Configuration.ConfigurationManager`, and `System.DirectoryServices` were bumped to net8-era versions (5.x/8.0.0) at the same time. `Atlassian.SDK` and `RestSharp` were left as-is (still netstandard2.0, resolve fine under net8.0).
+- The `Microsoft.Office.Interop.Excel` COM reference was removed in favor of `ClosedXML`, specifically so the project builds with plain `dotnet build`/`dotnet run` — the COM reference's `ResolveComReference` MSBuild task only worked under the full-framework MSBuild bundled with Visual Studio, not the dotnet-CLI one. Don't reintroduce Excel Interop without re-checking this constraint.

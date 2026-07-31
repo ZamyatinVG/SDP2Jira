@@ -6,12 +6,13 @@ using System.Configuration;
 using System.IO;
 using Atlassian.Jira;
 using System.Data;
-using Excel = Microsoft.Office.Interop.Excel;
+using ClosedXML.Excel;
 using NLog;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Globalization;
 using System.Threading;
+using System.Diagnostics;
 
 namespace SDP2Jira
 {
@@ -480,38 +481,19 @@ namespace SDP2Jira
         }
         private static void ExportToExcel(DataTable dt)
         {
-            // Создаем экземпляр Excel
-            Excel.Application exApp = new();
-            Excel.Workbook exWB = exApp.Workbooks.Add();
-            Excel.Worksheet exWS = (Excel.Worksheet)exWB.Worksheets[1];
-            exWS.Name = "Рабочее время";
-            // Установка заголовков
-            for (int j = 0; j < dt.Columns.Count; j++)
-                exWS.Cells[1, j + 1] = dt.Columns[j].ColumnName;
-            // Заполнение данными
-            var objectData = new object[dt.Rows.Count, dt.Columns.Count];
-            for (int i = 0; i < dt.Rows.Count; i++)
-                for (int j = 0; j < dt.Columns.Count; j++)
-                    objectData[i, j] = dt.Rows[i][j];
-            // Запись данных в диапазон
-            Excel.Range startCell = exWS.Cells[2, 1]; // Начинаем со второй строки
-            Excel.Range endCell = startCell.Offset[dt.Rows.Count - 1, dt.Columns.Count - 1];
-            Excel.Range writeRange = exWS.Range[startCell, endCell];
-            writeRange.Value2 = objectData;
-            // Форматирование
-            Excel.Range headerRange = exWS.Range["A1", "A1"].Resize[1, dt.Columns.Count];
-            headerRange.Font.Bold = true;
-            headerRange.HorizontalAlignment = Excel.XlHAlign.xlHAlignCenter;
-            // Установка границ
-            writeRange.Borders.LineStyle = Excel.XlLineStyle.xlContinuous;
-            // Фильтрация
-            object missingValue = System.Reflection.Missing.Value;
-            headerRange.AutoFilter(1, missingValue, Excel.XlAutoFilterOperator.xlAnd, missingValue, true);
+            using var workbook = new XLWorkbook();
+            // Add(DataTable) оформляет диапазон как Excel-таблицу: жирная шапка,
+            // чередующиеся строки и автофильтр уже включены стилем таблицы.
+            var ws = workbook.Worksheets.Add(dt, "Рабочее время");
             // Авторазмер колонок
-            exWS.Columns.AutoFit();
-            // Показать Excel
-            exApp.Visible = true;
-            exApp.Interactive = true;
+            ws.Columns().AdjustToContents();
+            if (!Directory.Exists("reports\\"))
+                Directory.CreateDirectory("reports\\");
+            string path = "reports\\" + $"worklog_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            workbook.SaveAs(path);
+            // Открываем файл в приложении, ассоциированном с .xlsx (обычно Excel)
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            Logger.Info($"Отчет сохранен: {path}");
         }
     }
 }
